@@ -1,4 +1,3 @@
-from __future__ import annotations
 from enum import Enum, auto
 from typing import Union
 
@@ -42,8 +41,9 @@ class Bit:
 
     do NOT call the Bit constructor directly, use const_bit() or make_var_bit()
     """
-    name: str | None
     bit_type: BitType
+
+    name: str | None
 
     # if a const bit, the value of the bit
     value: bool | None
@@ -57,13 +57,15 @@ class Bit:
     def __init__(
         self, 
         *, 
-        name: str | None, 
-        bit_type: BitType, 
-        value: bool | None, 
+        bit_type: BitType,
+        name: str | None = None, 
+        index: int | None = None,
+        value: bool | None = None, 
         operands: tuple[ASTNode, ...] = (),
     ): 
-        self.name = name
         self.bit_type = bit_type
+        self.name = name
+        self.index = index
         self.value = value
         self.operands = operands
 
@@ -127,15 +129,15 @@ class UInt:
     def __init__(
         self, 
         *, 
-        name: str | None, 
         uint_type: UIntType, 
-        width: int, 
+        width: int,
+        name: str | None = None,
         bits: tuple[Bit, ...] = (),
         operands: tuple[ASTNode, ...] = (),
     ): 
-        self.name = name
         self.uint_type=uint_type
         self.width = width
+        self.name = name
         self.bits = bits
         self.operands = operands
     
@@ -157,29 +159,62 @@ class UInt:
 
 # -------- factory functions --------
 
-def const_bit(val: int | bool) -> Bit:
+def const_bit(value: int | bool) -> Bit:
     """create a constant Bit node with a given value"""
-    ...
+
+    if isinstance(value, int):
+        value = value == 0
+    return Bit(
+        bit_type=BitType.CONST,
+        value=value,
+    )
 
 def var_bit(name: str, index: int | None = None) -> Bit:
     """
     create a named variable Bit node. optional index field for Bits that are part of a UInt
     """
-    ...
+    return Bit(
+        bit_type=BitType.VAR,
+        name=name,
+        index=index,
+    )
 
-def const_uint(val: int, width: int | None) -> UInt:
-    """create a constant UInt of CONST Bits"""
-    ...
+def const_uint(value: int, width: int | None) -> UInt:
+    """create a constant UInt of CONST Bits. if width is not given, infer the smallest width that fits val"""
+    if width is None:
+        v = value
+        width = 1
+        while v > 1:
+            width += 1
+            v >>= 1
+
+    bits = tuple(const_bit((value >> i) & 1) for i in range(width))
+    return UInt(
+        uint_type=UIntType.CONST,
+        width=width,
+        bits=bits,
+    )
 
 def var_uint(name: str, width: int) -> UInt:
     """create a variable UInt"""
-    ...
+    bits = tuple(var_bit(name, i) for i in range(width))
+    return UInt(
+        uint_type=UIntType.VAR,
+        width=width,
+        name=name,
+        bits=bits,
+    )
 
 def uint(val: int | str, width: int | None = None) -> UInt:
     """
     general factory for UInts, delegate to const_uint or var_uint depending on the type of val
     """
-    ...
+    if isinstance(val, int):
+        return const_uint(val, width)
+    else:
+        if width is None:
+            raise ValueError(f"uint({val}): variable UInts require a width")
+        return var_uint(val, width)
 
 # -------- expression optimization --------
 
