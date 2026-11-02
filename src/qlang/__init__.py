@@ -1,3 +1,8 @@
+from compile import (
+    OutputMode,
+    Oracle,
+    compile_oracle,
+)
 from expression import (
     Bit,
     UInt,
@@ -7,8 +12,4 @@ from expression import (
     var_uint,
     uint,
 )
-from compile import (
-    OutputMode,
-    Oracle,
-    compile_oracle,
-)
+from qalgorithm import search
