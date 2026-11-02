@@ -65,7 +65,7 @@ class Bit:
         if other.bit_type is BitType.VAR: 
             return NotImplemented
         return Bit(
-            name=self.name, 
+            name=None, 
             bit_type=BitType.AND, 
             value=None,
             operands=(self, other),
@@ -76,7 +76,7 @@ class Bit:
 
     def __not__(self): 
         return Bit(
-            name=self.name, 
+            name=None, 
             bit_type=BitType.NOT, 
             value=None, 
             operands=(self,),
@@ -88,7 +88,7 @@ class Bit:
         if other.bit_type is BitType.VAR: 
             return NotImplemented
         return Bit(
-            name=self.name, 
+            name=None, 
             bit_type=BitType.XOR, 
             value=None, 
             operands=(self, other),
@@ -138,7 +138,7 @@ class UInt:
         if other.uint_type is UIntType.VAR: 
             return NotImplemented # TODO
         return UInt(
-            name=self.name, 
+            name=None, 
             uint_type=UIntType.ADD, 
             width=max(self.width, other.width) + 1, 
             operands=(self, other),
