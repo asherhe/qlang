@@ -36,16 +36,43 @@ class Bit:
 
     do NOT call the Bit constructor directly, use const_bit() or make_var_bit()
     """
-    name: str
+    name: str | None
     bit_type: BitType
 
     # if a const bit, the value of the bit
-    value: bool
+    value: bool | None
 
     # if an operation, the list of operands it operates on
     operands: tuple[ASTNode, ...]
 
     # TODO: implement all the required bitwise operators
+    def __init__(
+        self, 
+        *, 
+        name: str | None, 
+        bit_type: BitType, 
+        value: bool | None, 
+        operands: tuple[ASTNode, ...] = (),
+    ): 
+        self.name = name
+        self.bit_type = bit_type
+        self.value = value
+        self.operands = operands
+
+    def __and__(self, other): 
+        if isinstance(other, bool): 
+            other = const_bit(other)
+        if other.bit_type is BitType.VAR: 
+            return NotImplemented
+        return Bit(
+            name=self.name, 
+            bit_type=BitType.AND, 
+            value=None,
+            operands=(self, other),
+        )
+
+    def __rand__(self, other): 
+        return self.__and__(other)
 
 class UInt:
     """
@@ -85,7 +112,7 @@ class UInt:
     def __add__(self, other):
         if isinstance(other, int): 
             other = const_uint(other, width=None)
-        if isinstance(other, UInt): 
+        if other.uint_type is UIntType.VAR: 
             return NotImplemented # TODO
         return UInt(
             name=self.name, 
