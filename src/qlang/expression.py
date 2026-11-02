@@ -1,4 +1,8 @@
+from __future__ import annotations
 from enum import Enum, auto
+from typing import Union
+
+# -------- AST node types --------
 
 class BitType(Enum):
     # leaf nodes
@@ -9,6 +13,19 @@ class BitType(Enum):
     NOT = auto()
     XOR = auto()
     AND = auto()
+    # TODO: add more as you see fit. 
+
+class UIntType(Enum):
+    # leaf nodes
+    CONST = auto()
+    VAR = auto()
+
+    # operators
+    ADD = auto()
+    AND = auto()
+    # TODO: these are just some examples. add more as you see fit.
+
+ASTNode = Union["Bit", "UInt"]
 
 class Bit:
     """
@@ -22,9 +39,11 @@ class Bit:
     name: str
     bit_type: BitType
 
-    # type-specific fields TODO
-    # i recommend using a single `payload` field to store the required data across all bit_types,
-    # and add @property accessors to check bit_type before returning property as the right type.
+    # if a const bit, the value of the bit
+    value: bool
+
+    # if an operation, the list of operands it operates on
+    operands: tuple[ASTNode, ...]
 
     # TODO: implement all the required bitwise operators
 
@@ -37,12 +56,15 @@ class UInt:
     do NOT call the UInt constructor directly, use uint()
     """
 
-    # Bits of this UInt with LSB as bits[0]
+    name: str
+    uint_type: UIntType
+    width: int # consider making this a property based on bits or operands
+
+    # if a const, Bits of this UInt with LSB as bits[0]
     bits: tuple[Bit, ...]
 
-    @property
-    def width(self) -> int:
-        return len(self.bits)
+    # if an operator, the operands that this UInt operates on
+    operands: tuple[ASTNode, ...]
 
     # TODO: implement all the arithmetic, bitwise comparison operators
 
@@ -69,6 +91,14 @@ def var_uint(name: str, width: int) -> UInt:
 def uint(val: int | str, width: int | None = None) -> UInt:
     """
     general factory for UInts, delegate to const_uint or var_uint depending on the type of val
+    """
+    ...
+
+# -------- expression optimization --------
+
+def optimize_expr(expr: ASTNode) -> ASTNode:
+    """
+    apply simplifications to minimize the number of nodes in an expression tree.
     """
     ...
 

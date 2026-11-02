@@ -7,4 +7,8 @@ from expression import (
     var_uint,
     uint,
 )
-
+from compile import (
+    OutputMode,
+    Oracle,
+    compile_oracle,
+)
