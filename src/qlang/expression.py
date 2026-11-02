@@ -1,5 +1,6 @@
 from enum import Enum, auto
 from typing import Union, Any
+import hashlib
 
 # -------- AST node types --------
 
@@ -54,7 +55,8 @@ class Bit:
     # if an operation, the list of operands it operates on
     operands: tuple[ASTNode, ...]
 
-    # TODO: implement all the required bitwise operators
+    cache: dict[tuple[Any, ...], ASTNode] = {}
+
     def __init__(
         self, 
         *, 
@@ -70,101 +72,62 @@ class Bit:
         self.value = value
         self.operands = operands
 
+    @staticmethod
+    def _operator(type: BitType, **kwargs): 
+        key = (type, kwargs)
+        if key not in Bit.cache: 
+            if 'other' in kwargs: 
+                if isinstance(kwargs['other'], bool):
+                    kwargs['other'] = const_bit(kwargs['other'])
+                Bit.cache[key] = Bit(
+                    bit_type=type, 
+                    operands=(kwargs['self'], kwargs['other'])
+                )
+            else: 
+                Bit.cache[key] = Bit(
+                    bit_type=type, 
+                    operands=(kwargs['self'])
+                )
+        return Bit.cache[key]
+    
     def __and__(self, other): 
-        if isinstance(other, bool): 
-            other = const_bit(other)
-        return Bit(
-            bit_type=BitType.AND, 
-            operands=(self, other),
-        )
+        return Bit._operator(BitType.AND, self=self, other=other)
 
     def __rand__(self, other): 
         return self.__and__(other)
 
     def __not__(self): 
-        return Bit(
-            bit_type=BitType.NOT, 
-            index=self.index,
-            operands=(self,),
-        )
+        return Bit._operator(BitType.NOT, self=self)
 
     def __xor__(self, other): 
-        if isinstance(other, bool): 
-            other = const_bit(other)
-        return Bit(
-            bit_type=BitType.XOR, 
-            index=self.index,
-            operands=(self, other),
-        )
+        return Bit._operator(BitType.XOR, self=self, other=other)
 
     def __rxor__(self, other): 
         return self.__xor__(other)
 
     def __or__(self, other): 
-        if isinstance(other, bool): 
-            other = const_bit(other)
-        return Bit(
-            bit_type=BitType.OR, 
-            index=self.index,
-            operands=(self, other),
-        )
+        return Bit._operator(BitType.OR, self=self, other=other)
 
     def __ror__(self, other): 
         return self.__or__(other)
 
     def __eq__(self, other) -> Any: 
-        if isinstance(other, bool): 
-            other = const_bit(other)
-        return Bit(
-            bit_type=BitType.EQ, 
-            index=self.index,
-            operands=(self, other),
-        )
+        return Bit._operator(BitType.EQ, self=self, other=other)
 
     def __ne__(self, other) -> Any: 
-        if isinstance(other, bool): 
-            other = const_bit(other)
-        return Bit(
-            bit_type=BitType.NE, 
-            index=self.index,
-            operands=(self, other),
-        )
+        return Bit._operator(BitType.NE, self=self, other=other)
 
     def __gt__(self, other): 
-        if isinstance(other, bool): 
-            other = const_bit(other)
-        return Bit(
-            bit_type=BitType.GT, 
-            index=self.index,
-            operands=(self, other),
-        )
+        return Bit._operator(BitType.GT, self=self, other=other)
 
     def __lt__(self, other): 
-        if isinstance(other, bool): 
-            other = const_bit(other)
-        return Bit(
-            bit_type=BitType.LT, 
-            index=self.index, 
-            operands=(self, other),
-        )
+        return Bit._operator(BitType.LT, self=self, other=other)
 
     def __ge__(self, other): 
-        if isinstance(other, bool): 
-            other = const_bit(other)
-        return Bit(
-            bit_type=BitType.GE, 
-            index=self.index,
-            operands=(self, other),
-        )
+        return Bit._operator(BitType.GE, self=self, other=other)
 
     def __le__(self, other): 
-        if isinstance(other, bool): 
-            other = const_bit(other)
-        return Bit(
-            bit_type=BitType.LE, 
-            index=self.index,
-            operands=(self, other),
-        )    
+        return Bit._operator(BitType.LE, self=self, other=other)
 
 class UInt:
     """
@@ -185,6 +148,8 @@ class UInt:
     # if an operator, the operands that this UInt operates on
     operands: tuple[ASTNode, ...]
 
+    cache: dict[tuple[Any, ...], ASTNode] = {}
+
     def __init__(
         self, 
         *, 
@@ -199,16 +164,29 @@ class UInt:
         self.name = name
         self.bits = bits
         self.operands = operands
+
+    @staticmethod
+    def _operator(type: UIntType, **kwargs): 
+        key = (type, kwargs)
+        if key not in UInt.cache: 
+            if 'other' in kwargs: 
+                if isinstance(kwargs['other'], int):
+                    kwargs['other'] = const_uint(kwargs['other'], width=None)
+                UInt.cache[key] = UInt(
+                    uint_type=type, 
+                    width=kwargs['width'],
+                    operands=(kwargs['self'], kwargs['other']),
+                )
+            else: 
+                UInt.cache[key] = UInt(
+                    uint_type=type, 
+                    width=kwargs['width'],
+                    operands=(kwargs['self']),
+                )
+        return UInt.cache[key]
     
-    # TODO: implement all the arithmetic, bitwise comparison operators    
     def __add__(self, other):
-        if isinstance(other, int): 
-            other = const_uint(other, width=None)
-        return UInt(
-            uint_type=UIntType.ADD, 
-            width=max(self.width, other.width) + 1, 
-            operands=(self, other),
-        )
+        return UInt._operator(UIntType.ADD, self=self, other=other)
 
     def __radd__(self, other): 
         return self.__add__(other)
