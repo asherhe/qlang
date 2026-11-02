@@ -72,8 +72,8 @@ class UInt:
         name: str | None, 
         uint_type: UIntType, 
         width: int, 
-        bits: tuple[Bit, ...],
-        operands: tuple[ASTNode, ...],
+        bits: tuple[Bit, ...] = (),
+        operands: tuple[ASTNode, ...] = (),
     ): 
         self.name = name
         self.uint_type=uint_type
@@ -81,18 +81,17 @@ class UInt:
         self.bits = bits
         self.operands = operands
     
-    # TODO: implement all the arithmetic, bitwise comparison operators
+    # TODO: implement all the arithmetic, bitwise comparison operators    
     def __add__(self, other):
         if isinstance(other, int): 
             other = const_uint(other, width=None)
         if isinstance(other, UInt): 
-            return NotImplemented
+            return NotImplemented # TODO
         return UInt(
             name=self.name, 
             uint_type=UIntType.ADD, 
             width=max(self.width, other.width) + 1, 
-            bits=self.bits, 
-            operands=(self, other)
+            operands=(self, other),
         )
 
     def __radd__(self, other): 
