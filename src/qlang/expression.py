@@ -194,11 +194,20 @@ class UInt:
     def __mul__(self, other): 
         return UInt._operator(UIntType.MUL, self=self, other=other)
 
+    def __rmul__(self, other): 
+        return self.__mul__(other)
+
     def __lshift__(self, other): 
         return UInt._operator(UIntType.LSHIFT, self=self, other=other)
 
+    def __rlshift__(self, other): 
+        return self.__lshift__(other)
+
     def __rshift__(self, other): 
         return UInt._operator(UIntType.RSHIFT, self=self, other=other)
+
+    def __rrshift__(self, other): 
+        return self.__rshift__(other)
 
 # -------- factory functions --------
 
