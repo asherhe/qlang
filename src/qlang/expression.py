@@ -74,9 +74,7 @@ class Bit:
         if isinstance(other, bool): 
             other = const_bit(other)
         return Bit(
-            name=None, 
             bit_type=BitType.AND, 
-            value=None,
             operands=(self, other),
         )
 
@@ -85,9 +83,8 @@ class Bit:
 
     def __not__(self): 
         return Bit(
-            name=None, 
             bit_type=BitType.NOT, 
-            value=None, 
+            index=self.index,
             operands=(self,),
         )
 
@@ -95,9 +92,8 @@ class Bit:
         if isinstance(other, bool): 
             other = const_bit(other)
         return Bit(
-            name=None, 
             bit_type=BitType.XOR, 
-            value=None, 
+            index=self.index,
             operands=(self, other),
         )
 
@@ -108,9 +104,8 @@ class Bit:
         if isinstance(other, bool): 
             other = const_bit(other)
         return Bit(
-            name=None, 
             bit_type=BitType.OR, 
-            value=None, 
+            index=self.index,
             operands=(self, other),
         )
 
@@ -121,9 +116,8 @@ class Bit:
         if isinstance(other, bool): 
             other = const_bit(other)
         return Bit(
-            name=None, 
             bit_type=BitType.EQ, 
-            value=None, 
+            index=self.index,
             operands=(self, other),
         )
 
@@ -131,9 +125,8 @@ class Bit:
         if isinstance(other, bool): 
             other = const_bit(other)
         return Bit(
-            name=None, 
             bit_type=BitType.NE, 
-            value=None, 
+            index=self.index,
             operands=(self, other),
         )
 
@@ -141,9 +134,8 @@ class Bit:
         if isinstance(other, bool): 
             other = const_bit(other)
         return Bit(
-            name=None, 
             bit_type=BitType.GT, 
-            value=None, 
+            index=self.index,
             operands=(self, other),
         )
 
@@ -151,9 +143,8 @@ class Bit:
         if isinstance(other, bool): 
             other = const_bit(other)
         return Bit(
-            name=None, 
             bit_type=BitType.LT, 
-            value=None, 
+            index=self.index, 
             operands=(self, other),
         )
 
@@ -161,9 +152,8 @@ class Bit:
         if isinstance(other, bool): 
             other = const_bit(other)
         return Bit(
-            name=None, 
             bit_type=BitType.GE, 
-            value=None, 
+            index=self.index,
             operands=(self, other),
         )
 
@@ -171,9 +161,8 @@ class Bit:
         if isinstance(other, bool): 
             other = const_bit(other)
         return Bit(
-            name=None, 
             bit_type=BitType.LE, 
-            value=None, 
+            index=self.index,
             operands=(self, other),
         )    
 
@@ -216,7 +205,6 @@ class UInt:
         if isinstance(other, int): 
             other = const_uint(other, width=None)
         return UInt(
-            name=None, 
             uint_type=UIntType.ADD, 
             width=max(self.width, other.width) + 1, 
             operands=(self, other),
