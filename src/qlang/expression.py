@@ -13,7 +13,12 @@ class BitType(Enum):
     NOT = auto()
     XOR = auto()
     AND = auto()
-    # TODO: add more as you see fit. 
+    OR = auto()
+    EQ = auto()
+    GT = auto()
+    LT = auto()
+    GE = auto()
+    LE = auto()
 
 class UIntType(Enum):
     # leaf nodes
@@ -22,8 +27,9 @@ class UIntType(Enum):
 
     # operators
     ADD = auto()
-    AND = auto()
-    # TODO: these are just some examples. add more as you see fit.
+    MUL = auto()
+    LSHIFT = auto()
+    RSHIFT = auto()
 
 ASTNode = Union["Bit", "UInt"]
 
