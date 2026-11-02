@@ -105,6 +105,21 @@ class Bit:
     def __rxor__(self, other): 
         return self.__xor__(other)
 
+    def __or__(self, other): 
+        if isinstance(other, bool): 
+            other = const_bit(other)
+        if other.bit_type is BitType.VAR: 
+            return NotImplemented
+        return Bit(
+            name=None, 
+            bit_type=BitType.OR, 
+            value=None, 
+            operands=(self, other),
+        )
+
+    def __ror__(self, other): 
+        return self.__or__(other)
+
 class UInt:
     """
     a wrapper for a sequence of Bits that together represent an integer
