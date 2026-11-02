@@ -23,4 +23,8 @@ qlang = "src"
 [tool.pyright]
 venvPath = "."
 venv = ".venv"
+include = ["src"]
+executionEnvironments = [
+  { root = "src" }
+]
 
