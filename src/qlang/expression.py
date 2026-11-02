@@ -74,6 +74,29 @@ class Bit:
     def __rand__(self, other): 
         return self.__and__(other)
 
+    def __not__(self): 
+        return Bit(
+            name=self.name, 
+            bit_type=BitType.NOT, 
+            value=None, 
+            operands=(self,),
+        )
+
+    def __xor__(self, other): 
+        if isinstance(other, bool): 
+            other = const_bit(other)
+        if other.bit_type is BitType.VAR: 
+            return NotImplemented
+        return Bit(
+            name=self.name, 
+            bit_type=BitType.XOR, 
+            value=None, 
+            operands=(self, other),
+        )
+
+    def __rxor__(self, other): 
+        return self.__xor__(other)
+
 class UInt:
     """
     a wrapper for a sequence of Bits that together represent an integer
