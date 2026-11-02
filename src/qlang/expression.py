@@ -70,8 +70,6 @@ class Bit:
     def __and__(self, other): 
         if isinstance(other, bool): 
             other = const_bit(other)
-        if other.bit_type is BitType.VAR: 
-            return NotImplemented
         return Bit(
             name=None, 
             bit_type=BitType.AND, 
@@ -93,8 +91,6 @@ class Bit:
     def __xor__(self, other): 
         if isinstance(other, bool): 
             other = const_bit(other)
-        if other.bit_type is BitType.VAR: 
-            return NotImplemented
         return Bit(
             name=None, 
             bit_type=BitType.XOR, 
@@ -108,8 +104,6 @@ class Bit:
     def __or__(self, other): 
         if isinstance(other, bool): 
             other = const_bit(other)
-        if other.bit_type is BitType.VAR: 
-            return NotImplemented
         return Bit(
             name=None, 
             bit_type=BitType.OR, 
@@ -158,8 +152,6 @@ class UInt:
     def __add__(self, other):
         if isinstance(other, int): 
             other = const_uint(other, width=None)
-        if other.uint_type is UIntType.VAR: 
-            return NotImplemented # TODO
         return UInt(
             name=None, 
             uint_type=UIntType.ADD, 
