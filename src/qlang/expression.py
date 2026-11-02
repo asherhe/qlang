@@ -87,7 +87,13 @@ class UInt:
             other = const_uint(other, width=None)
         if isinstance(other, UInt): 
             return NotImplemented
-        return UInt(name=self.name, uint_type=UIntType.ADD, width=self.width, bits=self.bits, operands=(self, other))
+        return UInt(
+            name=self.name, 
+            uint_type=UIntType.ADD, 
+            width=max(self.width, other.width) + 1, 
+            bits=self.bits, 
+            operands=(self, other)
+        )
 
     def __radd__(self, other): 
         return self.__add__(other)
