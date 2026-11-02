@@ -1,5 +1,5 @@
 from enum import Enum, auto
-from typing import Union
+from typing import Union, Any
 
 # -------- AST node types --------
 
@@ -14,6 +14,7 @@ class BitType(Enum):
     AND = auto()
     OR = auto()
     EQ = auto()
+    NE = auto()
     GT = auto()
     LT = auto()
     GE = auto()
@@ -115,6 +116,66 @@ class Bit:
 
     def __ror__(self, other): 
         return self.__or__(other)
+
+    def __eq__(self, other) -> Any: 
+        if isinstance(other, bool): 
+            other = const_bit(other)
+        return Bit(
+            name=None, 
+            bit_type=BitType.EQ, 
+            value=None, 
+            operands=(self, other),
+        )
+
+    def __ne__(self, other) -> Any: 
+        if isinstance(other, bool): 
+            other = const_bit(other)
+        return Bit(
+            name=None, 
+            bit_type=BitType.NE, 
+            value=None, 
+            operands=(self, other),
+        )
+
+    def __gt__(self, other): 
+        if isinstance(other, bool): 
+            other = const_bit(other)
+        return Bit(
+            name=None, 
+            bit_type=BitType.GT, 
+            value=None, 
+            operands=(self, other),
+        )
+
+    def __lt__(self, other): 
+        if isinstance(other, bool): 
+            other = const_bit(other)
+        return Bit(
+            name=None, 
+            bit_type=BitType.LT, 
+            value=None, 
+            operands=(self, other),
+        )
+
+    def __ge__(self, other): 
+        if isinstance(other, bool): 
+            other = const_bit(other)
+        return Bit(
+            name=None, 
+            bit_type=BitType.GE, 
+            value=None, 
+            operands=(self, other),
+        )
+
+    def __le__(self, other): 
+        if isinstance(other, bool): 
+            other = const_bit(other)
+        return Bit(
+            name=None, 
+            bit_type=BitType.LE, 
+            value=None, 
+            operands=(self, other),
+        )    
 
 class UInt:
     """
