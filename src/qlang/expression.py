@@ -191,6 +191,15 @@ class UInt:
     def __radd__(self, other): 
         return self.__add__(other)
 
+    def __mul__(self, other): 
+        return UInt._operator(UIntType.MUL, self=self, other=other)
+
+    def __lshift__(self, other): 
+        return UInt._operator(UIntType.LSHIFT, self=self, other=other)
+
+    def __rshift__(self, other): 
+        return UInt._operator(UIntType.RSHIFT, self=self, other=other)
+
 # -------- factory functions --------
 
 def const_bit(value: int | bool) -> Bit:
