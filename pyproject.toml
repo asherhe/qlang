@@ -1,0 +1,26 @@
+[project]
+name = "qlang"
+version = "0.1.0"
+description = "compile expressions into quantum circuits!"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "qiskit-aer>=0.17",
+    "qiskit-ibm-runtime>=0.40",
+    "qiskit[visualization]>=2.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.setuptools]
+packages = ["qlang"]
+
+[tool.setuptools.package-dir]
+qlang = "src"
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+
