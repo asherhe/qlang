@@ -1,7 +1,9 @@
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from expression import Bit, UInt
+
 from qiskit import QuantumCircuit
+
+from .expression import Bit, UInt
 
 class OutputMode(Enum):
     BIT_FLIP = auto()

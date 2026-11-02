@@ -41,7 +41,9 @@ class Bit:
 
     # if a const bit, the value of the bit
     value: bool | None
-
+    # if a variable bit, maps back to the Bit's index in the containing UInt if it exists
+    index: int | None
+    
     # if an operation, the list of operands it operates on
     operands: tuple[ASTNode, ...]
 
@@ -154,7 +156,7 @@ def uint(val: int | str, width: int | None = None) -> UInt:
 
 def optimize_expr(expr: ASTNode) -> ASTNode:
     """
-    apply simplifications to minimize the number of nodes in an expression tree.
+    apply simplifications to minimize the complexity and gate requirements of the expression tree
     """
     ...
 
