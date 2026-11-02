@@ -1,4 +1,4 @@
-from expression import ASTNode, Bit, UInt
+from .expression import ASTNode, Bit, UInt
 
 from collections.abc import Iterable
 
