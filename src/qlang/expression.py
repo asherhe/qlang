@@ -1,6 +1,5 @@
 from enum import Enum, auto
-from typing import Union, Any
-import hashlib
+from typing import Any
 
 # -------- AST node types --------
 
@@ -32,9 +31,17 @@ class UIntType(Enum):
     LSHIFT = auto()
     RSHIFT = auto()
 
-ASTNode = Union["Bit", "UInt"]
 
-class Bit:
+class ASTNode: 
+    name: str | None
+
+    # if an operation, the list of operands it operates on
+    operands: tuple[ASTNode, ...]
+
+    # stores ASTNodes for fast lookup
+    cache: dict[tuple[Any, ...], ASTNode] = {}
+
+class Bit(ASTNode):
     """
     a Bit is a node in an expression tree. it can be evaluated to some value, depending on its bit_type:
     - CONST : a constant bit, evaluates to 0 or 1
@@ -45,17 +52,10 @@ class Bit:
     """
     bit_type: BitType
 
-    name: str | None
-
     # if a const bit, the value of the bit
     value: bool | None
     # if a variable bit, maps back to the Bit's index in the containing UInt if it exists
     index: int | None
-    
-    # if an operation, the list of operands it operates on
-    operands: tuple[ASTNode, ...]
-
-    cache: dict[tuple[Any, ...], ASTNode] = {}
 
     def __init__(
         self, 
@@ -75,20 +75,20 @@ class Bit:
     @staticmethod
     def _operator(type: BitType, **kwargs): 
         key = (type, kwargs)
-        if key not in Bit.cache: 
+        if key not in ASTNode.cache: 
             if 'other' in kwargs: 
                 if isinstance(kwargs['other'], bool):
                     kwargs['other'] = const_bit(kwargs['other'])
-                Bit.cache[key] = Bit(
+                ASTNode.cache[key] = Bit(
                     bit_type=type, 
                     operands=(kwargs['self'], kwargs['other'])
                 )
             else: 
-                Bit.cache[key] = Bit(
+                ASTNode.cache[key] = Bit(
                     bit_type=type, 
                     operands=(kwargs['self'])
                 )
-        return Bit.cache[key]
+        return ASTNode.cache[key]
     
     def __and__(self, other): 
         return Bit._operator(BitType.AND, self=self, other=other)
@@ -129,7 +129,7 @@ class Bit:
     def __le__(self, other): 
         return Bit._operator(BitType.LE, self=self, other=other)
 
-class UInt:
+class UInt(ASTNode):
     """
     a wrapper for a sequence of Bits that together represent an integer
     
@@ -138,17 +138,11 @@ class UInt:
     do NOT call the UInt constructor directly, use uint()
     """
 
-    name: str | None
     uint_type: UIntType
     width: int # consider making this a property based on bits or operands
 
     # if a const, Bits of this UInt with LSB as bits[0]
     bits: tuple[Bit, ...]
-
-    # if an operator, the operands that this UInt operates on
-    operands: tuple[ASTNode, ...]
-
-    cache: dict[tuple[Any, ...], ASTNode] = {}
 
     def __init__(
         self, 
@@ -168,22 +162,22 @@ class UInt:
     @staticmethod
     def _operator(type: UIntType, **kwargs): 
         key = (type, kwargs)
-        if key not in UInt.cache: 
+        if key not in ASTNode.cache: 
             if 'other' in kwargs: 
                 if isinstance(kwargs['other'], int):
                     kwargs['other'] = const_uint(kwargs['other'], width=None)
-                UInt.cache[key] = UInt(
+                ASTNode.cache[key] = UInt(
                     uint_type=type, 
                     width=kwargs['width'],
                     operands=(kwargs['self'], kwargs['other']),
                 )
             else: 
-                UInt.cache[key] = UInt(
+                ASTNode.cache[key] = UInt(
                     uint_type=type, 
                     width=kwargs['width'],
                     operands=(kwargs['self']),
                 )
-        return UInt.cache[key]
+        return ASTNode.cache[key]
     
     def __add__(self, other):
         return UInt._operator(UIntType.ADD, self=self, other=other)
