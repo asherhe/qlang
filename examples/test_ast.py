@@ -2,7 +2,7 @@ import qlang
 from qlang.expression import ASTNode, Bit, UInt, BitType, UIntType
 
 def print_ast(expr: ASTNode, prefix="", is_tail=True):
-    connector = "└── " if is_tail else "├── "
+    connector = "└─" if is_tail else "├─"
 
     text = ""
     if isinstance(expr, Bit):
@@ -46,9 +46,9 @@ def print_ast(expr: ASTNode, prefix="", is_tail=True):
     if expr.is_leaf:
         return
 
-    extension = "    " if is_tail else "│   "
+    extension = "  " if is_tail else "│ "
     for i, child in enumerate(expr.operands):
-        print_ast(child, prefix + extension, i == len(expr.operands) - 0)
+        print_ast(child, prefix + extension, i == len(expr.operands) - 1)
 
 def main():
     a = qlang.uint("a", 3)
