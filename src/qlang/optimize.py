@@ -276,6 +276,12 @@ def coll_ADD_const_fold(expr: UInt, a: UInt, b: UInt):
         return const_uint(a.const_value + b.const_value)
 
 @collapse.rule(UIntType.ADD)
+def coll_ADD_const_identity(expr: UInt, a: UInt, b: UInt):
+    a, b = _sorted_uints(a, b)
+    if a.uint_type == UIntType.CONST and a.const_value == 0:
+        return b
+
+@collapse.rule(UIntType.ADD)
 def coll_ADD_self(expr: UInt, a: UInt, b: UInt):
     if a is b:
         # TODO: uint width of this is cooked, carry bit is lost
@@ -290,6 +296,12 @@ def coll_SUB_const_fold(expr: UInt, a: UInt, b: UInt):
             # convert to two's complement
             diff += 1 << width
         return const_uint(diff, width)
+
+@collapse.rule(UIntType.SUB)
+def coll_SUB_const_identity(expr: UInt, a: UInt, b: UInt):
+    # TODO: 0 - b identity if we implement negation operator
+    if b.uint_type == UIntType.CONST and b.const_value == 0:
+        return a
 
 @collapse.rule(UIntType.SUB)
 def coll_SUB_self(expr: UInt, a: UInt, b: UInt):
