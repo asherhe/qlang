@@ -31,17 +31,39 @@ def var_checker(
         else: 
             raise NotImplementedError("node type not implemented yet")
 
+# prereq: assignments are available for VARs 
+def get_values(
+    nodes: tuple[ASTNode, ...], 
+    assignments: dict[str, int | bool],
+) -> tuple[int | bool, ...]: 
+    values = ()
+    for node in nodes: 
+        type = get_type(node)
+        if isinstance(node, Bit):       # not actually that necessary but for intellisense polymorphism
+            if type == BitType.VAR:
+                values += (assignments[cast(str, node.name)],)
+            elif type == BitType.CONST: 
+                values += (cast(bool, node.value),)
+            else: 
+                return NotImplemented
+        elif isinstance(node, UInt): 
+            if type == UIntType.VAR: 
+                values += (assignments[cast(str, node.name)],)
+            elif type == UIntType.CONST: 
+                values += (sum(cast(bool, b.value) * (1<<i) for i, b in enumerate(node.bits)),)
+            else: 
+                return NotImplemented
+        else: 
+            return NotImplemented
+    return values
+
 def evaluate(
     node: ASTNode, 
     assignments: dict[str, int | bool],
 ) -> int | bool: 
     if not node.operands:  # leaf node
         var_checker((node,), assignments)
-        if isinstance(node, Bit): 
-            return cast(bool, node.value)
-        if isinstance(node, UInt): 
-            return sum(cast(bool, b.value) * (1<<i) for i, b in enumerate(node.bits))
-        return NotImplemented
+        return get_values((node,), assignments)[0]
     else:                  # operators
         if isinstance(node, Bit): 
             match node.bit_type: 
@@ -50,10 +72,8 @@ def evaluate(
                         raise ValueError("NOT cannot be applied to a type other than Bit")
                     b = node.operands[0]
                     var_checker((b,), assignments)
-                    if b.bit_type == BitType.VAR: 
-                        return not assignments[cast(str, b.name)]
-                    if b.bit_type == BitType.CONST: 
-                        return not b.value
+                    if b.bit_type in (BitType.VAR, BitType.CONST): 
+                        return not get_values((node,), assignments)[0]
                     return not evaluate(b, assignments)
                 case BitType.XOR: 
                     if not isinstance(node.operands[0], Bit) or not isinstance(node.operands[1], Bit): 
@@ -62,15 +82,8 @@ def evaluate(
                     var_checker((b1, b2), assignments)
                     if b1.bit_type not in (BitType.VAR, BitType.CONST) or b2.bit_type not in (BitType.VAR, BitType.CONST): 
                         return evaluate(b1, assignments) ^ evaluate(b2, assignments)
-                    if b1.bit_type == BitType.VAR: 
-                        b1v = assignments[cast(str, b1.name)]
-                    else: 
-                        b1v = b1.value
-                    if b2.bit_type == BitType.VAR: 
-                        b2v = assignments[cast(str, b1.name)]
-                    else: 
-                        b2v = b1.value
-                    return cast(bool, b1v) ^ cast(bool, b2v)
+                    b1v, b2v = get_values((b1, b2), assignments)
+                    return b1v ^ b2v
                 case _: 
                     return NotImplemented
         if isinstance(node, UInt): 
