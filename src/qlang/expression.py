@@ -219,7 +219,9 @@ class UInt(ASTNode):
         
         if uint_type == UIntType.ADD: 
             width = max(left.width, right.width) + 1
-        elif uint_type == UIntType.MUL: 
+        elif uint_type == UIntType.SUB:
+            width = max(left.width, right.width)               # fixed-width, wraps modulo 2**width
+        elif uint_type == UIntType.MUL:
             width = left.width + right.width
         elif uint_type in (UIntType.LSHIFT, UIntType.RSHIFT): 
             width = left.width                                 # this assumes fixed-width behavior for now
@@ -342,6 +344,9 @@ Rule = Callable[[ASTNode], ASTNode]
 
 def rebuild(expr: ASTNode, operands: tuple[ASTNode, ...]) -> ASTNode:
     """reconstruct an expression with new operands"""
+    # nodes are hash-consed, so unchanged operands mean the node is already canonical
+    if all(old is new for old, new in zip(expr.operands, operands)):
+        return expr
     if isinstance(expr, Bit):
         return Bit.cache_bit(expr.bit_type, operands)
     if isinstance(expr, UInt):
@@ -428,7 +433,10 @@ def _collapse_identities(expr: ASTNode) -> ASTNode:
             a, b = uint_args
             atype = a.uint_type
             btype = b.uint_type
-            if atype == UIntType.CONST:
+            if a is b:
+                # a < a  ->  0
+                expr = const_bit(False)
+            elif atype == UIntType.CONST:
                 if btype == UIntType.CONST:
                     expr = const_bit(a.const_value < b.const_value)
             elif btype == UIntType.CONST:
@@ -489,8 +497,8 @@ def _collapse_identities(expr: ASTNode) -> ASTNode:
                     # 1 & b  ->  b
                     expr = b if aval else const_bit(False)
                 elif a is b:
-                    # a & a  ->  1
-                    expr = const_bit(True)
+                    # a & a  ->  a
+                    expr = a
                 elif a_xor_b:
                     # a & ~a  ->  0
                     expr = const_bit(False)
