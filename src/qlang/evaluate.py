@@ -88,6 +88,35 @@ def bitwise_only_op(
         case BitType.OR: 
             return b1v | b2v
 
+# EQ, NE, GT, LE, GE, LE
+def comparison_op(
+    node: ASTNode, 
+    assignments: dict[str, int | bool],
+    type: BitType,
+): 
+    u1, u2 = node.operands[0], node.operands[1]
+    var_checker((u1, u2), assignments)
+    if (get_type(u1) not in (BitType.VAR, BitType.CONST, UIntType.VAR, UIntType.CONST) or
+        get_type(u2) not in (BitType.VAR, BitType.CONST, UIntType.VAR, UIntType.CONST)): 
+        u1v, u2v = evaluate(u1, assignments), evaluate(u2, assignments)
+    else: 
+        u1v, u2v = get_values((u1, u2), assignments)
+    match type: 
+        case BitType.EQ: 
+            return u1v == u2v
+        case BitType.NE: 
+            return u1v != u2v
+        case BitType.GT: 
+            return u1v > u2v
+        case BitType.LT: 
+            return u1v < u2v
+        case BitType.GE: 
+            return u1v >= u2v
+        case BitType.LE: 
+            return u1v <= u2v
+        case _: 
+            return NotImplemented
+
 def evaluate(
     node: ASTNode, 
     assignments: dict[str, int | bool],
@@ -113,53 +142,17 @@ def evaluate(
                 case BitType.OR: 
                     return bitwise_only_op(node, assignments, BitType.OR)
                 case BitType.EQ:
-                    u1, u2 = node.operands[0], node.operands[1]
-                    var_checker((u1, u2), assignments)
-                    if (get_type(u1) not in (BitType.VAR, BitType.CONST, UIntType.VAR, UIntType.CONST) or
-                        get_type(u2) not in (BitType.VAR, BitType.CONST, UIntType.VAR, UIntType.CONST)): 
-                        return evaluate(u1, assignments) == evaluate(u2, assignments)
-                    u1v, u2v = get_values((u1, u2), assignments)
-                    return u1v == u2v
+                    return comparison_op(node, assignments, BitType.EQ)
                 case BitType.NE:
-                    u1, u2 = node.operands[0], node.operands[1]
-                    var_checker((u1, u2), assignments)
-                    if (get_type(u1) not in (BitType.VAR, BitType.CONST, UIntType.VAR, UIntType.CONST) or
-                        get_type(u2) not in (BitType.VAR, BitType.CONST, UIntType.VAR, UIntType.CONST)): 
-                        return evaluate(u1, assignments) != evaluate(u2, assignments)
-                    u1v, u2v = get_values((u1, u2), assignments)
-                    return u1v != u2v
+                    return comparison_op(node, assignments, BitType.NE)
                 case BitType.GT:
-                    u1, u2 = node.operands[0], node.operands[1]
-                    var_checker((u1, u2), assignments)
-                    if (get_type(u1) not in (BitType.VAR, BitType.CONST, UIntType.VAR, UIntType.CONST) or
-                        get_type(u2) not in (BitType.VAR, BitType.CONST, UIntType.VAR, UIntType.CONST)): 
-                        return evaluate(u1, assignments) > evaluate(u2, assignments)
-                    u1v, u2v = get_values((u1, u2), assignments)
-                    return u1v > u2v
+                    return comparison_op(node, assignments, BitType.GT)
                 case BitType.LT:
-                    u1, u2 = node.operands[0], node.operands[1]
-                    var_checker((u1, u2), assignments)
-                    if (get_type(u1) not in (BitType.VAR, BitType.CONST, UIntType.VAR, UIntType.CONST) or
-                        get_type(u2) not in (BitType.VAR, BitType.CONST, UIntType.VAR, UIntType.CONST)): 
-                        return evaluate(u1, assignments) < evaluate(u2, assignments)
-                    u1v, u2v = get_values((u1, u2), assignments)
-                    return u1v < u2v
+                    return comparison_op(node, assignments, BitType.LT)
                 case BitType.GE:
-                    u1, u2 = node.operands[0], node.operands[1]
-                    var_checker((u1, u2), assignments)
-                    if (get_type(u1) not in (BitType.VAR, BitType.CONST, UIntType.VAR, UIntType.CONST) or
-                        get_type(u2) not in (BitType.VAR, BitType.CONST, UIntType.VAR, UIntType.CONST)): 
-                        return evaluate(u1, assignments) > evaluate(u2, assignments)
-                    u1v, u2v = get_values((u1, u2), assignments)
-                    return u1v > u2v
+                    return comparison_op(node, assignments, BitType.GE)
                 case BitType.LE:
-                    u1, u2 = node.operands[0], node.operands[1]
-                    var_checker((u1, u2), assignments)
-                    if (get_type(u1) not in (BitType.VAR, BitType.CONST, UIntType.VAR, UIntType.CONST) or
-                        get_type(u2) not in (BitType.VAR, BitType.CONST, UIntType.VAR, UIntType.CONST)): 
-                        return evaluate(u1, assignments) < evaluate(u2, assignments)
-                    u1v, u2v = get_values((u1, u2), assignments)
-                    return u1v < u2v
+                    return comparison_op(node, assignments, BitType.LE)
                 case _: 
                     return NotImplemented
         if isinstance(node, UInt): 
