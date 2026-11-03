@@ -62,7 +62,7 @@ def test_index_zero_is_valid():
     assert bit.index == 0
 
 
-@pytest.mark.parametrize("index,width", [(-1, 3), (3, 3), (1, -1), pytest.param(1, 0, marks=pytest.mark.xfail(strict=True, reason="var_bit skips validation when parent_width is zero"))])
+@pytest.mark.parametrize("index,width", [(-1, 3), (3, 3), (1, -1), (1, 0)])
 def test_invalid_index_metadata_rejected(index, width):
     with pytest.raises(ValueError):
         var_bit("x", index=index, parent_width=width)
