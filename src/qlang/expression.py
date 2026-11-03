@@ -404,6 +404,7 @@ def collapse_identities(expr: ASTNode) -> ASTNode:
                 expr = const_bit(not bit_args[0].value)
             elif bit_args[0].bit_type == BitType.NOT:
                 expr = bit_args[0].operands[0]
+
         elif expr.bit_type == BitType.EQ:
             # skip - assume all EQ have been decomposed
             pass
@@ -411,8 +412,21 @@ def collapse_identities(expr: ASTNode) -> ASTNode:
             # a != a  ->  false
             if uint_args[0] is uint_args[1]:
                 expr = const_bit(False)
+
         elif expr.bit_type == BitType.LT:
-            pass
+            a, b = uint_args
+            atype = a.uint_type
+            btype = b.uint_type
+            if atype == UIntType.CONST:
+                if btype == UIntType.CONST:
+                    expr = const_bit(a.const_value < b.const_value)
+            elif btype == UIntType.CONST:
+                bval = b.const_value
+                if bval == 0:
+                    expr = const_bit(False)
+                elif bval >= (1 << a.width):
+                    expr = const_bit(True)
+
         elif expr.bit_type == BitType.GT:
             # skip - assume all GT have been decomposed
             pass
