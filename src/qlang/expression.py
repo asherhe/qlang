@@ -27,6 +27,7 @@ class UIntType(Enum):
 
     # operators
     ADD = auto()
+    SUB = auto()
     MUL = auto()
     LSHIFT = auto()
     RSHIFT = auto()
@@ -253,6 +254,12 @@ class UInt(ASTNode):
 
     def __radd__(self, other): 
         return self.__add__(other)
+    
+    def __sub__(self, other):
+        return UInt._operator(UIntType.SUB, self=self, other=other)
+
+    def __rsub__(self, other): 
+        return UInt._operator(UIntType.SUB, self=other, other=self)
 
     def __mul__(self, other): 
         return UInt._operator(UIntType.MUL, self=self, other=other)
