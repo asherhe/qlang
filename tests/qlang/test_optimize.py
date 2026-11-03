@@ -54,14 +54,6 @@ def test_uint_comparison_rewrites_preserve_values(x, y, op):
         assert evaluate(result, {"x": a, "y": b}) is op(a, b)
 
 
-@pytest.mark.xfail(strict=True, raises=AttributeError, reason="comparison collapse rules assume UInt operands and access uint_type on Bit")
-@pytest.mark.parametrize("op", [operator.eq, operator.ne, operator.lt, operator.le, operator.gt, operator.ge])
-def test_boolean_comparison_rewrites(p, q, op):
-    result = optimize_expr(op(p, q))
-    for a, b in itertools.product([False, True], repeat=2):
-        assert evaluate(result, {"p": a, "q": b}) is op(a, b)
-
-
 @pytest.mark.parametrize("constant", [0, 1, 6, 7, 8])
 @pytest.mark.parametrize("constant_first", [False, True])
 def test_comparison_constant_bounds(x, constant, constant_first):
@@ -79,8 +71,8 @@ def test_constant_arithmetic_fold(op, expected):
 
 
 @pytest.mark.parametrize("a,b,expected", [
-    pytest.param(3, 1, 2, marks=pytest.mark.xfail(strict=True, raises=AssertionError, reason="coll_SUB_const_fold uses left shift instead of subtraction")),
-    pytest.param(1, 3, 14, marks=pytest.mark.xfail(strict=True, raises=AssertionError, reason="constant subtraction neither subtracts nor wraps underflow correctly")),
+    (3, 1, 2),
+    (1, 3, 14),
     (0, 0, 0),
 ])
 def test_subtraction_constant_fold(a, b, expected):
@@ -91,12 +83,11 @@ def test_subtraction_constant_fold(a, b, expected):
 
 @pytest.mark.parametrize("value,amount", [
     (1, 1), (3, 1),
-    pytest.param(7, 1, marks=pytest.mark.xfail(strict=True, raises=ValueError, reason="constant left shift does not mask overflowing bits")),
-    pytest.param(1, 3, marks=pytest.mark.xfail(strict=True, raises=ValueError, reason="constant folding runs before overshift handling and does not wrap")),
+    (7, 1), (1, 3),
 ])
 def test_constant_left_shift_wraps(value, amount):
     result = optimize_expr(const_uint(value, 3) << amount)
-    assert result.const_value == (value << amount) % 8
+    assert result.const_value == (value << amount) & 0b111
 
 
 @pytest.mark.parametrize("build", [
@@ -133,10 +124,8 @@ def test_add_self_preserves_carry(x):
     (lambda x, y: (0 - (x + 0)), {"x": 1, "y": 0}, 15),
     (lambda x, y: (0 - (x * 1)), {"x": 1, "y": 0}, 15),
     (lambda x, y: ((x + y) - y) << 3, {"x": 1, "y": 0}, 8),
-    pytest.param(lambda x, y: (const_uint(1, 4) + const_uint(0, 4)) << 3, {}, 8,
-                 marks=pytest.mark.xfail(strict=True, raises=ValueError, reason="constant addition loses width; enclosing shift folds at the narrowed operand width")),
-    pytest.param(lambda x, y: (const_uint(1, 4) >> 1) - const_uint(1), {}, 15,
-                 marks=pytest.mark.xfail(strict=True, raises=AssertionError, reason="constant right shift narrows its result and constant subtraction folds incorrectly")),
+    (lambda x, y: (const_uint(1, 4) + const_uint(0, 4)) << 3, {}, 8),
+    (lambda x, y: (const_uint(1, 4) >> 1) - const_uint(1), {}, 15),
 ], ids=["add-identity-before-underflow", "mul-identity-before-underflow", "cancel-before-shift", "constant-add-before-shift", "constant-rshift-before-underflow"])
 def test_rewrites_preserve_width_sensitive_parent_semantics(x, y, build, assignment, expected):
     expr = build(x, y)

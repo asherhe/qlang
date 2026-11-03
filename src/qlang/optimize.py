@@ -345,7 +345,7 @@ coll_ADD_const_reassoc = collapse.rule(UIntType.ADD)(_const_reassoc(UIntType.ADD
 @collapse.rule(UIntType.SUB)
 def coll_SUB_const_fold(expr: UInt, a: UInt, b: UInt):
     if a.uint_type == b.uint_type == UIntType.CONST:
-        diff = a.const_value << b.const_value
+        diff = a.const_value - b.const_value
         width = max(a.width, b.width)
         if (diff < 0):
             # convert to two's complement
@@ -417,7 +417,8 @@ def coll_MUL_pow2(expr: UInt, a: UInt, b: UInt):
 @collapse.rule(UIntType.LSHIFT)
 def coll_LSHIFT_const_fold(expr: UInt, a: UInt, b: UInt):
     if a.uint_type == b.uint_type == UIntType.CONST:
-        return const_uint(a.const_value << b.const_value, a.width)
+        mask = (1 << a.width) - 1
+        return const_uint((a.const_value << b.const_value) & mask, a.width)
 
 @collapse.rule(UIntType.LSHIFT)
 def coll_LSHIFT_const_identity(expr: UInt, a: UInt, b: UInt):
@@ -487,7 +488,12 @@ def optimize_expr(expr: ASTNode) -> ASTNode:
     """
     apply simplifications to minimize the complexity and gate requirements of the expression tree
     """
-    expr = run_rule_pass(expr, decompose)
-    expr = run_rule_pass(expr, collapse)
-    return expr
+    key = id(expr)
+    while True:
+        expr = run_rule_pass(expr, decompose)
+        expr = run_rule_pass(expr, collapse)
+        new_key = id(expr)
+        if key == new_key:
+            return expr
+        key = new_key
 
