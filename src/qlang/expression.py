@@ -214,8 +214,8 @@ class UInt(ASTNode):
         if type == UIntType.ADD: 
             width = max(left.width, right.width) + 1
         elif type == UIntType.MUL: 
-            width = left.width * right.width
-        elif type == (UIntType.LSHIFT, UIntType.RSHIFT): 
+            width = left.width + right.width
+        elif type in (UIntType.LSHIFT, UIntType.RSHIFT): 
             width = left.width                                 # this assumes fixed-width behavior for now
         else: 
             raise ValueError(f"unsupported UInt operation: {type}")
