@@ -78,10 +78,14 @@ def bitwise_only_op(
     if not isinstance(b1, Bit) or not isinstance(b2, Bit): 
         raise ValueError(f"{name} cannot be applied to a type other than Bit")
     var_checker((b1, b2), assignments)
-    if b1.bit_type not in (BitType.VAR, BitType.CONST) or b2.bit_type not in (BitType.VAR, BitType.CONST): 
-        b1v, b2v = evaluate(b1, assignments), evaluate(b2, assignments)
+    if b1.bit_type not in (BitType.VAR, BitType.CONST): 
+        b1v = evaluate(b1, assignments)
     else: 
-        b1v, b2v = get_values((b1, b2), assignments)
+        b1v = get_values((b1,), assignments)[0]
+    if b2.bit_type not in (BitType.VAR, BitType.CONST): 
+        b2v = evaluate(b2, assignments)
+    else: 
+        b2v = get_values((b2,), assignments)[0]
     match type: 
         case BitType.XOR: 
             return b1v ^ b2v
@@ -100,11 +104,14 @@ def comparison_op(
     type = node.bit_type
     u1, u2 = node.operands[0], node.operands[1]
     var_checker((u1, u2), assignments)
-    if (get_type(u1) not in (BitType.VAR, BitType.CONST, UIntType.VAR, UIntType.CONST) or
-        get_type(u2) not in (BitType.VAR, BitType.CONST, UIntType.VAR, UIntType.CONST)): 
-        u1v, u2v = evaluate(u1, assignments), evaluate(u2, assignments)
+    if get_type(u1) not in (BitType.VAR, BitType.CONST, UIntType.VAR, UIntType.CONST):
+        u1v = evaluate(u1, assignments)
     else: 
-        u1v, u2v = get_values((u1, u2), assignments)
+        u1v = get_values((u1,), assignments)[0]
+    if get_type(u2) not in (BitType.VAR, BitType.CONST, UIntType.VAR, UIntType.CONST): 
+        u2v = evaluate(u2, assignments)
+    else: 
+        u2v = get_values((u2,), assignments)[0]
     match type: 
         case BitType.EQ: 
             return u1v == u2v
@@ -144,10 +151,14 @@ def int_only_op(
     if not isinstance(u1, UInt) or not isinstance(u2, UInt): 
         raise ValueError(f"{name} cannot be applied to a type other than UInt")
     var_checker((u1, u2), assignments)
-    if get_type(u1) not in (UIntType.VAR, UIntType.CONST) or get_type(u2) not in (UIntType.VAR, UIntType.CONST):
-        u1v, u2v = evaluate(u1, assignments), evaluate(u2, assignments)
+    if get_type(u1) not in (UIntType.VAR, UIntType.CONST):
+        u1v = evaluate(u1, assignments)
     else: 
-        u1v, u2v = get_values((u1, u2), assignments)
+        u1v = get_values((u1,), assignments)[0]
+    if get_type(u2) not in (UIntType.VAR, UIntType.CONST): 
+        u2v = evaluate(u2, assignments)
+    else: 
+        u2v = get_values((u2,), assignments)[0]
     match type: 
         case UIntType.ADD: 
             return u1v + u2v
