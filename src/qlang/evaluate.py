@@ -10,13 +10,23 @@ def get_type(node: ASTNode):
         return node.uint_type
     return NotImplemented
 
+def var_checker(
+    nodes: tuple[ASTNode, ...],
+    assignments: dict[str, int | bool],
+) -> None: 
+    for node in nodes: 
+        if get_type(node) in (BitType.VAR, UIntType.VAR): 
+            if node.name not in assignments: 
+                raise ValueError(f"variable '{node.name}' is not assigned")
+        else: 
+            raise NotImplementedError("node type not implemented yet")
+
 def evaluate(
     node: ASTNode, 
     assignments: dict[str, int | bool],
 ) -> int | bool: 
     if not node.operands:  # leaf node
-        if get_type(node) in (BitType.VAR, UIntType.VAR) and node.name not in assignments:
-            raise ValueError(f"variable '{node.name}' is not assigned")
+        var_checker((node,), assignments)
         if isinstance(node, Bit): 
             if node.value is None: 
                 raise ValueError("const Bit has missing value")
@@ -37,10 +47,9 @@ def evaluate(
                     if not isinstance(node.operands[0], Bit): 
                         raise ValueError("NOT cannot be applied to a type other than Bit")
                     b = node.operands[0]
+                    var_checker((node,), assignments)
                     if b.bit_type == BitType.VAR: 
-                        if b.name not in assignments: 
-                            raise ValueError(f"variable '{node.name}' is not assigned")
-                        return not assignments[b.name]
+                        return assignments[cast(str, b.name)]
                     if b.bit_type == BitType.CONST: 
                         return not b.value
                     return not evaluate(b, assignments)
