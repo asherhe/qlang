@@ -108,7 +108,7 @@ class Bit(ASTNode):
     def __rand__(self, other): 
         return self.__and__(other)
 
-    def __not__(self): 
+    def __invert__(self): 
         return Bit._operator(BitType.NOT, self=self)
 
     def __xor__(self, other): 
