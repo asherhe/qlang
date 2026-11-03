@@ -81,7 +81,7 @@ class Bit(ASTNode):
         return NotImplemented
 
     @staticmethod
-    def _cache_bit(type: BitType, operands: tuple[ASTNode, ...]): 
+    def cache_bit(type: BitType, operands: tuple[ASTNode, ...]): 
         key = (Bit, type, tuple(id(node) for node in operands))
         if key not in ASTNode.cache: 
             ASTNode.cache[key] = Bit(
@@ -96,13 +96,13 @@ class Bit(ASTNode):
         if left is NotImplemented: 
             return NotImplemented
         if 'other' not in kwargs: 
-            return Bit._cache_bit(type, (left,))
+            return Bit.cache_bit(type, (left,))
         
         right = Bit.as_bit(kwargs['other'])
         if right is NotImplemented: 
             return NotImplemented
         
-        return Bit._cache_bit(type, (left, right))
+        return Bit.cache_bit(type, (left, right))
     
     def __and__(self, other): 
         return Bit._operator(BitType.AND, self=self, other=other)
@@ -182,7 +182,7 @@ class UInt(ASTNode):
         return NotImplemented
     
     @staticmethod
-    def _cache_int(type: UIntType, width: int, operands): 
+    def cache_int(type: UIntType, width: int, operands): 
         key = (UIntType, type, tuple(id(node) for node in operands))
         if key not in ASTNode.cache: 
             ASTNode.cache[key] = UInt(
@@ -198,7 +198,7 @@ class UInt(ASTNode):
         if left is NotImplemented: 
             return NotImplemented
         if 'other' not in kwargs: 
-            return UInt._cache_int(type, left.width, (left,))
+            return UInt.cache_int(type, left.width, (left,))
         
         right = UInt.as_uint(kwargs['other'])
         if right is NotImplemented: 
@@ -213,7 +213,31 @@ class UInt(ASTNode):
         else: 
             raise ValueError(f"unsupported UInt operation: {type}")
         
-        return UInt._cache_int(type, width, (left, right))
+        return UInt.cache_int(type, width, (left, right))
+
+    def _compare(self, type: BitType, other): 
+        right = UInt.as_uint(other)
+        if right is NotImplemented: 
+            return NotImplemented
+        return Bit.cache_bit(type, (self, right))
+
+    def __eq__(self, other): 
+        return self._compare(BitType.EQ, other)
+
+    def __ne__(self, other): 
+        return self._compare(BitType.NE, other)
+    
+    def __gt__(self, other): 
+        return self._compare(BitType.GT, other)
+
+    def __lt__(self, other): 
+        return self._compare(BitType.LT, other)
+
+    def __ge__(self, other): 
+        return self._compare(BitType.GE, other)
+
+    def __le__(self, other): 
+        return self._compare(BitType.LE, other)    
 
     def __add__(self, other):
         return UInt._operator(UIntType.ADD, self=self, other=other)
