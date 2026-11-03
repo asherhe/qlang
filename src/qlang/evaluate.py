@@ -18,6 +18,16 @@ def var_checker(
         if get_type(node) in (BitType.VAR, UIntType.VAR): 
             if node.name not in assignments: 
                 raise ValueError(f"variable '{node.name}' is not assigned")
+        elif isinstance(node, Bit) and node.bit_type == BitType.CONST: 
+            if node.value is None: 
+                raise ValueError("const Bit has missing value")
+        elif isinstance(node, UInt) and node.uint_type == UIntType.CONST: 
+            if not node.bits: 
+                raise ValueError("const UInt has missing bits")
+            if not all(b.bit_type == BitType.VAR for b in node.bits):
+                raise ValueError("const UInt cannot contain var Bit")
+            if not all(isinstance(b.value, Bit) for b in node.bits): 
+                raise ValueError("const Bit as part of const UInt has missing value")
         else: 
             raise NotImplementedError("node type not implemented yet")
 
@@ -28,16 +38,8 @@ def evaluate(
     if not node.operands:  # leaf node
         var_checker((node,), assignments)
         if isinstance(node, Bit): 
-            if node.value is None: 
-                raise ValueError("const Bit has missing value")
-            return node.value
+            return cast(bool, node.value)
         if isinstance(node, UInt): 
-            if not node.bits: 
-                raise ValueError("const UInt has missing bits")
-            if not all(b.bit_type == BitType.VAR for b in node.bits):
-                raise ValueError("const UInt cannot contain var Bit")
-            if not all(isinstance(b.value, Bit) for b in node.bits): 
-                raise ValueError("const Bit as part of const UInt has missing value")
             return sum(cast(bool, b.value) * (1<<i) for i, b in enumerate(node.bits))
         return NotImplemented
     else:                  # operators
