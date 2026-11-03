@@ -247,8 +247,8 @@ class UInt(ASTNode):
         self.bits = bits
         self.operands = operands
 
-        if uint_type != UIntType.BITS:
-            if uint_type == UIntType.CONST:
+        if uint_type not in (UIntType.CONST, UIntType.BITS):
+            if uint_type == UIntType.VAR:
                 self.bits = tuple(Bit._create(
                     bit_type=BitType.UINT,
                     name=name,
@@ -377,9 +377,27 @@ class UInt(ASTNode):
             text = f" {self.const_value}"
         elif self.uint_type == UIntType.VAR:
             text = f" {self.name}"
+        elif self.uint_type == UIntType.BITS:
+            chars = "abcdefghijklmnopqrstuvwxyz"
+            # id(bit) -> index
+            sources: dict[int, int] = {}
+            for bit in self.bits:
+                if bit.bit_type == BitType.CONST:
+                    text += "1" if bit.value else "0"
+                else:
+                    bit_id = id(bit)
+                    if bit.bit_type == BitType.UINT:
+                        bit_id = id(bit.parent_uint)
+
+                    if bit_id not in sources:
+                        sources[bit_id] = len(sources)
+                    text += chars[sources[bit_id]]
+            text = f" {text[::-1]}"
+            
         else:
             UINT_OPS = {
                 UIntType.ADD: "+",
+                UIntType.SUB: "-",
                 UIntType.MUL: "*",
                 UIntType.LSHIFT: "<<",
                 UIntType.RSHIFT: ">>",
