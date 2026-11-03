@@ -412,7 +412,7 @@ def coll_MUL_pow2(expr: UInt, a: UInt, b: UInt):
         if c > 1 and c & (c - 1) == 0:
             k = c.bit_length() - 1
             # TODO: sizing is once again cooked
-            return UInt.cache_int(UIntType.LSHIFT, expr.width, (b, const_uint(k)))
+            return UInt._create(uint_type=UIntType.LSHIFT, width=expr.width, operands=(b, const_uint(k)))
 
 @collapse.rule(UIntType.LSHIFT)
 def coll_LSHIFT_const_fold(expr: UInt, a: UInt, b: UInt):
@@ -447,7 +447,7 @@ def coll_LSHIFT_merge(expr: UInt, a: UInt, b: UInt):
             if total >= expr.width:
                 return const_uint(0, expr.width)
             # build the node directly so the shift keeps expr.width (see coll_MUL_pow2)
-            return UInt.cache_int(UIntType.LSHIFT, expr.width, (x, const_uint(total)))
+            return UInt._create(uint_type=UIntType.LSHIFT, width=expr.width, operands=(x, const_uint(total)))
 
 @collapse.rule(UIntType.RSHIFT)
 def coll_RSHIFT_const_fold(expr: UInt, a: UInt, b: UInt):

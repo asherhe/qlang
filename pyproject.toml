@@ -25,6 +25,6 @@ executionEnvironments = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests/qlang"]
-adopts = "-ra"
+addopts = "-ra"
 xfail_strict = true
 
