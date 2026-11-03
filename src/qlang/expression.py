@@ -217,7 +217,7 @@ def const_bit(value: int | bool) -> Bit:
     """create a constant Bit node with a given value"""
 
     if isinstance(value, int):
-        value = value == 0
+        value = value != 0
     return Bit(
         bit_type=BitType.CONST,
         value=value,
