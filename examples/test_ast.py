@@ -29,7 +29,8 @@ def print_ast(expr: ASTNode, prefix="", is_tail=True):
     elif isinstance(expr, UInt):
         uint: UInt = expr
         if uint.uint_type == UIntType.CONST:
-            text = f"UInt {uint.value}"
+            value = sum((1 if bit.value else 0) << i for i, bit in enumerate(uint.bits))
+            text = f"UInt {value}"
         elif uint.uint_type == UIntType.VAR:
             text = f"UInt {uint.name}"
         else:
@@ -51,13 +52,20 @@ def print_ast(expr: ASTNode, prefix="", is_tail=True):
         print_ast(child, prefix + extension, i == len(expr.operands) - 1)
 
 def main():
-    a = qlang.uint("a", 3)
-    b = qlang.uint("b", 3)
+    a = qlang.uint("a", 2)
+    b = qlang.uint("b", 2)
 
     print_ast(a)
     print_ast(b)
+    print()
 
-    print_ast(a+b)
+    c = a + b
+    print_ast(c)
+    print()
+
+    d = c == 3
+    print_ast(d)
+    print()
 
 if __name__ == "__main__":
     main()
