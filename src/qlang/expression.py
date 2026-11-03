@@ -193,6 +193,30 @@ class Bit(ASTNode):
     def __le__(self, other): 
         return Bit._operator(BitType.LE, self=self, other=other)
 
+    def __repr__(self):
+        text = " "
+        if self.bit_type == BitType.CONST:
+            text = f" {1 if self.value else 0}"
+        elif self.bit_type == BitType.VAR:
+            text = f" {self.name}"
+        elif self.bit_type == BitType.UINT:
+            text = f" {self.parent_uint}[{self.index}]" 
+        else:
+            BIT_OPS = {
+                BitType.NOT: "~",
+                BitType.XOR: "^",
+                BitType.AND: "&",
+                BitType.OR: "|",
+                BitType.EQ: "==",
+                BitType.NE: "!=",
+                BitType.GT: ">",
+                BitType.LT: "<",
+                BitType.GE: ">=",
+                BitType.LE: "<=",
+            }
+            text = f" op{BIT_OPS[self.bit_type]}"
+        return f"<Bit{text}>"
+
 class UInt(ASTNode):
     """
     a wrapper for a sequence of Bits that together represent an integer
@@ -346,6 +370,22 @@ class UInt(ASTNode):
 
     def __rrshift__(self, other): 
         return UInt._operator(UIntType.RSHIFT, self=other, other=self)
+    
+    def __repr__(self):
+        text = ""
+        if self.uint_type == UIntType.CONST:
+            text = f" {self.const_value}"
+        elif self.uint_type == UIntType.VAR:
+            text = f" {self.name}"
+        else:
+            UINT_OPS = {
+                UIntType.ADD: "+",
+                UIntType.MUL: "*",
+                UIntType.LSHIFT: "<<",
+                UIntType.RSHIFT: ">>",
+            }
+            text = f" op{UINT_OPS[self.uint_type]}"
+        return f"<UInt{text} ({self.width}-bit)>"
 
 # -------- factory functions --------
 
