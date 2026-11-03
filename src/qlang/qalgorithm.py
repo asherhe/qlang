@@ -2,6 +2,20 @@ from .expression import ASTNode, Bit, UInt
 
 from collections.abc import Iterable
 
+from .compile import Oracle, compile_oracle, OutputMode
+
+def _phase_oracle(
+    oracle: Oracle 
+):
+    ...
+
+def _diffuser(
+    num_qubits: int, 
+    inputs: list[int]
+):
+    ...
+
+
 def search(
     params: dict[str, Iterable[int]],
     pred: Bit,
