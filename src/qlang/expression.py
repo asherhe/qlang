@@ -352,9 +352,17 @@ def decompose_ops(expr: ASTNode) -> ASTNode:
             # assuming only binary OR operation
             # maybe we will do n-ary OR eventually but not now
             expr = ~(~bit_args[0] & ~bit_args[1])
-        if expr.bit_type == BitType.EQ:
+        elif expr.bit_type == BitType.EQ:
             # != is simpler to implement in gates
             expr = ~(uint_args[0] != uint_args[1])
+        # collapse all comparison operators to LT to keep compilation clean
+        elif expr.bit_type == BitType.GT:
+            expr = uint_args[1] < uint_args[0]
+        elif expr.bit_type == BitType.LE:
+            expr = ~(uint_args[1] < uint_args[0])
+        elif expr.bit_type == BitType.GE:
+            expr = ~(uint_args[0] < uint_args[1])
+            
             
     elif isinstance(expr, UInt):
         pass

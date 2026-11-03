@@ -65,7 +65,7 @@ def main():
     print_ast(d)
     print()
 
-    big_expr = (d | ~d) ^ ((a<<1)>>1 == 1)
+    big_expr = (d | ~d) ^ ((a<<1)>>1 >= 0)
     print_ast(big_expr)
     big_expr_decomp = qlang.decompose_ops(big_expr)
     print("decompose_ops:")
