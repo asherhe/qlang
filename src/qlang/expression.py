@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from enum import Enum, IntEnum, auto
-from typing import Any, cast
+from typing import Any, TypeVar, cast
 
 # -------- AST node types --------
 
@@ -34,6 +34,8 @@ class UIntType(IntEnum):
     RSHIFT = auto()
 
 
+T = TypeVar("T", bound="ASTNode")
+
 class ASTNode: 
     name: str | None
 
@@ -47,6 +49,22 @@ class ASTNode:
     @property
     def is_leaf(self) -> bool:
         return len(self.operands) == 0
+
+    @classmethod
+    def _get_cache_key(cls, **kwargs) -> tuple[Any, ...]:
+        """
+        unique identifie for this ASTNode, implemented by subclassed types
+        """
+        raise NotImplementedError
+
+    @classmethod
+    def _create(cls: type[T], **kwargs) -> T:
+        sub_key = cls._get_cache_key(**kwargs)
+        key = (cls, sub_key)
+        
+        if key not in cls.cache:
+            cls.cache[key] = cls(**kwargs)
+        return cast(T, cls.cache[key])
 
     def __bool__(self): 
         raise TypeError(
@@ -90,6 +108,26 @@ class Bit(ASTNode):
         self.parent_width = parent_width
         self.operands = operands
 
+    @classmethod
+    def _get_cache_key(
+        cls,
+        *,
+        bit_type: BitType,
+        name: str | None = None, 
+        value: bool | None = None, 
+        index: int | None = None,
+        parent_width: int | None = None,
+        operands: tuple[ASTNode, ...] = (),
+        **kwargs
+   ) -> tuple[Any, ...]:
+        if bit_type == BitType.CONST:
+            return (bit_type, value)
+        elif bit_type == BitType.VAR:
+            return (bit_type, name, index, parent_width)
+        else:
+            operand_ids = tuple(id(o) for o in operands)
+            return (bit_type, operand_ids)
+
     @staticmethod
     def as_bit(val): 
         if isinstance(val, Bit): 
@@ -99,24 +137,14 @@ class Bit(ASTNode):
         raise TypeError(f"Type {type(val)} cannot be converted to Bit")
 
     @staticmethod
-    def cache_bit(bit_type: BitType, operands: tuple[ASTNode, ...]) -> Bit:
-        key = (Bit, bit_type, tuple(id(node) for node in operands))
-        if key not in ASTNode.cache:
-            ASTNode.cache[key] = Bit(
-                bit_type=bit_type,
-                operands=operands,
-            )
-        return cast(Bit, ASTNode.cache[key])
-
-    @staticmethod
     def _operator(bit_type: BitType, **kwargs) -> Bit:
         left = Bit.as_bit(kwargs['self'])
         if 'other' not in kwargs: 
-            return Bit.cache_bit(bit_type, (left,))
+            return Bit._create(bit_type=bit_type, operands=(left,))
         
         right = Bit.as_bit(kwargs['other'])
         
-        return Bit.cache_bit(bit_type, (left, right))
+        return Bit._create(bit_type=bit_type, operands=(left, right))
     
     def __and__(self, other): 
         return Bit._operator(BitType.AND, self=self, other=other)
@@ -187,6 +215,26 @@ class UInt(ASTNode):
         self.bits = bits
         self.operands = operands
 
+    @classmethod
+    def _get_cache_key(
+        cls,
+        *,
+        uint_type: UIntType, 
+        width: int,
+        name: str | None = None,
+        bits: tuple[Bit, ...] = (),
+        operands: tuple[ASTNode, ...] = (),
+        **kwargs
+   ) -> tuple[Any, ...]:
+        if uint_type == UIntType.CONST:
+            bit_ids = tuple(id(b) for b in bits)
+            return (uint_type, width, bit_ids)
+        elif uint_type == UIntType.VAR:
+            return (uint_type, width, name)
+        else:
+            operand_ids = tuple(id(o) for o in operands)
+            return (uint_type, width, operand_ids)
+
     @property
     def const_value(self) -> int:
         """the internal value held by the bits of a CONST UInt, as an int"""
@@ -201,22 +249,12 @@ class UInt(ASTNode):
         if isinstance(val, (bool, int)): 
             return const_uint(val, width=None)
         raise TypeError(f"Type {type(val)} cannot be converted to UInt")
-    
-    @staticmethod
-    def cache_int(uint_type: UIntType, width: int, operands) -> UInt:
-        key = (UIntType, uint_type, width, tuple(id(node) for node in operands))
-        if key not in ASTNode.cache: 
-            ASTNode.cache[key] = UInt(
-                uint_type=uint_type,
-                width=width, 
-                operands=operands,
-            )
-        return cast(UInt, ASTNode.cache[key])
+
     @staticmethod
     def _operator(uint_type: UIntType, **kwargs): 
         left = UInt.as_uint(kwargs['self'])
         if 'other' not in kwargs: 
-            return UInt.cache_int(uint_type, left.width, (left,))
+            return UInt._create(uint_type=uint_type, width=left.width, operands=(left,))
         
         right = UInt.as_uint(kwargs['other'])
         
@@ -231,11 +269,11 @@ class UInt(ASTNode):
         else: 
             raise ValueError(f"unsupported UInt operation: {uint_type}")
         
-        return UInt.cache_int(uint_type, width, (left, right))
+        return UInt._create(uint_type=uint_type, width=width, operands=(left, right))
 
     def _compare(self, bit_type: BitType, other) -> Bit:
         right = UInt.as_uint(other)
-        return Bit.cache_bit(bit_type, (self, right))
+        return Bit._create(bit_type=bit_type, operands=(self, right))
 
     # python really isn't happy about overriding __eq__ to return a non-bool
     def __eq__(self, other) -> Bit:  # type: ignore[override]
@@ -293,7 +331,7 @@ def const_bit(value: int | bool) -> Bit:
 
     if isinstance(value, int):
         value = value != 0
-    return Bit(
+    return Bit._create(
         bit_type=BitType.CONST,
         value=value,
     )
@@ -305,11 +343,11 @@ def var_bit(name: str, index: int | None = None, parent_width: int | None = None
     if parent_width: 
         if parent_width <= 0: 
             raise ValueError("specified parent width must be positive")
-        if not index: 
+        if index is None: 
             raise ValueError("index must be present if parent width is present")
         if index < 0 or index >= parent_width: 
             raise ValueError("index is out of bounds compared to parent width") 
-    return Bit(
+    return Bit._create(
         bit_type=BitType.VAR,
         name=name,
         index=index,
@@ -328,7 +366,7 @@ def const_uint(value: int, width: int | None = None) -> UInt:
         raise ValueError("value does not fit in specified width")
     
     bits = tuple(const_bit((value >> i) & 1) for i in range(width))
-    return UInt(
+    return UInt._create(
         uint_type=UIntType.CONST,
         width=width,
         bits=bits,
@@ -339,7 +377,7 @@ def var_uint(name: str, width: int) -> UInt:
     if width <= 0: 
         raise ValueError("specified width must be positive")
     bits = tuple(var_bit(name, i, parent_width=width) for i in range(width))
-    return UInt(
+    return UInt._create(
         uint_type=UIntType.VAR,
         width=width,
         name=name,
