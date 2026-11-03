@@ -16,9 +16,18 @@ def var_checker(
     assignments: dict[str, int | bool],
 ) -> None: 
     for node in nodes: 
-        if get_type(node) in (BitType.VAR, UIntType.VAR): 
+        type = get_type(node)
+        if type in (BitType.VAR, UIntType.VAR): 
             if node.name not in assignments: 
                 raise ValueError(f"variable '{node.name}' is not assigned")
+            value = assignments[node.name]
+            if type == BitType.VAR: 
+                assignments[node.name] = value != 0
+            elif isinstance(node, UInt): 
+                if value < 0: 
+                    raise ValueError(f"assignment value '{node.name}' must be non-negative")
+                elif value >= (1 << node.width): 
+                    raise ValueError(f"assignment value '{node.name}' cannot be larger than width")
         elif isinstance(node, Bit) and node.bit_type == BitType.CONST: 
             if node.value is None: 
                 raise ValueError("const Bit has missing value")
@@ -184,7 +193,7 @@ def evaluate(
                     raise ValueError("NOT cannot be applied to a type other than Bit")
                 var_checker((b,), assignments)
                 if b.bit_type in (BitType.VAR, BitType.CONST): 
-                    return not get_values((node,), assignments)[0]
+                    return not get_values((b,), assignments)[0]
                 return not evaluate(b, assignments)
             if type in (BitType.XOR, BitType.AND, BitType.OR): 
                 return bitwise_only_op(node, assignments)
