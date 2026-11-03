@@ -1,5 +1,5 @@
 from enum import Enum, auto
-from typing import Any
+from typing import Any, cast
 
 # -------- AST node types --------
 
@@ -90,31 +90,27 @@ class Bit(ASTNode):
             return val
         if isinstance(val, (bool, int)): 
             return const_bit(val)
-        return NotImplemented
+        raise TypeError(f"Type {type(val)} cannot be converted to Bit")
 
     @staticmethod
-    def cache_bit(type: BitType, operands: tuple[ASTNode, ...]): 
-        key = (Bit, type, tuple(id(node) for node in operands))
-        if key not in ASTNode.cache: 
+    def cache_bit(bit_type: BitType, operands: tuple[ASTNode, ...]) -> Bit:
+        key = (Bit, bit_type, tuple(id(node) for node in operands))
+        if key not in ASTNode.cache:
             ASTNode.cache[key] = Bit(
-                bit_type=type, 
+                bit_type=bit_type,
                 operands=operands,
             )
-        return ASTNode.cache[key]
+        return cast(Bit, ASTNode.cache[key])
 
     @staticmethod
-    def _operator(type: BitType, **kwargs): 
+    def _operator(bit_type: BitType, **kwargs) -> Bit:
         left = Bit.as_bit(kwargs['self'])
-        if left is NotImplemented: 
-            return NotImplemented
         if 'other' not in kwargs: 
-            return Bit.cache_bit(type, (left,))
+            return Bit.cache_bit(bit_type, (left,))
         
         right = Bit.as_bit(kwargs['other'])
-        if right is NotImplemented: 
-            return NotImplemented
         
-        return Bit.cache_bit(type, (left, right))
+        return Bit.cache_bit(bit_type, (left, right))
     
     def __and__(self, other): 
         return Bit._operator(BitType.AND, self=self, other=other)
@@ -137,10 +133,10 @@ class Bit(ASTNode):
     def __ror__(self, other): 
         return self.__or__(other)
 
-    def __eq__(self, other) -> Any: 
+    def __eq__(self, other) -> Bit:  # type: ignore[override]
         return Bit._operator(BitType.EQ, self=self, other=other)
 
-    def __ne__(self, other) -> Any: 
+    def __ne__(self, other) -> Bit:  # type: ignore[override]
         return Bit._operator(BitType.NE, self=self, other=other)
 
     def __gt__(self, other): 
@@ -191,52 +187,46 @@ class UInt(ASTNode):
             return val
         if isinstance(val, (bool, int)): 
             return const_uint(val, width=None)
-        return NotImplemented
+        raise TypeError(f"Type {type(val)} cannot be converted to UInt")
     
     @staticmethod
-    def cache_int(type: UIntType, width: int, operands): 
-        key = (UIntType, type, tuple(id(node) for node in operands))
+    def cache_int(uint_type: UIntType, width: int, operands) -> UInt:
+        key = (UIntType, uint_type, width, tuple(id(node) for node in operands))
         if key not in ASTNode.cache: 
             ASTNode.cache[key] = UInt(
-                uint_type=type,
+                uint_type=uint_type,
                 width=width, 
                 operands=operands,
             )
-        return ASTNode.cache[key]
-
+        return cast(UInt, ASTNode.cache[key])
     @staticmethod
-    def _operator(type: UIntType, **kwargs): 
+    def _operator(uint_type: UIntType, **kwargs): 
         left = UInt.as_uint(kwargs['self'])
-        if left is NotImplemented: 
-            return NotImplemented
         if 'other' not in kwargs: 
-            return UInt.cache_int(type, left.width, (left,))
+            return UInt.cache_int(uint_type, left.width, (left,))
         
         right = UInt.as_uint(kwargs['other'])
-        if right is NotImplemented: 
-            return NotImplemented
         
-        if type == UIntType.ADD: 
+        if uint_type == UIntType.ADD: 
             width = max(left.width, right.width) + 1
-        elif type == UIntType.MUL: 
+        elif uint_type == UIntType.MUL: 
             width = left.width + right.width
-        elif type in (UIntType.LSHIFT, UIntType.RSHIFT): 
+        elif uint_type in (UIntType.LSHIFT, UIntType.RSHIFT): 
             width = left.width                                 # this assumes fixed-width behavior for now
         else: 
-            raise ValueError(f"unsupported UInt operation: {type}")
+            raise ValueError(f"unsupported UInt operation: {uint_type}")
         
-        return UInt.cache_int(type, width, (left, right))
+        return UInt.cache_int(uint_type, width, (left, right))
 
-    def _compare(self, type: BitType, other): 
+    def _compare(self, bit_type: BitType, other) -> Bit:
         right = UInt.as_uint(other)
-        if right is NotImplemented: 
-            return NotImplemented
-        return Bit.cache_bit(type, (self, right))
+        return Bit.cache_bit(bit_type, (self, right))
 
-    def __eq__(self, other): 
+    # python really isn't happy about overriding __eq__ to return a non-bool
+    def __eq__(self, other) -> Bit:  # type: ignore[override]
         return self._compare(BitType.EQ, other)
 
-    def __ne__(self, other): 
+    def __ne__(self, other) -> Bit:  # type: ignore[override]
         return self._compare(BitType.NE, other)
     
     def __gt__(self, other): 
