@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from enum import Enum, IntEnum, auto
 from operator import attrgetter
-from typing import Any, cast
+from typing import Any, Callable, cast
 
 # -------- AST node types --------
 
@@ -338,23 +338,45 @@ def uint(val: int | str, width: int | None = None) -> UInt:
 
 # -------- expression optimization --------
 
-def decompose_ops(expr: ASTNode) -> ASTNode:
+Rule = Callable[[ASTNode], ASTNode]
+
+def rebuild(expr: ASTNode, operands: tuple[ASTNode, ...]) -> ASTNode:
+    """reconstruct an expression with new operands"""
+    if isinstance(expr, Bit):
+        return Bit.cache_bit(expr.bit_type, operands)
+    if isinstance(expr, UInt):
+        return UInt.cache_int(expr.uint_type, expr.width, operands)
+    raise TypeError("only Bit and UInt nodes are supported")
+
+def traverse_transform(
+    expr: ASTNode,
+    rule: Rule,
+    memo: dict[int, ASTNode] | None = None,
+) -> ASTNode:
     """
-    decompose operations that cannot be directly built with quantum gates into primitive operators
+    apply transformation rule to every ASTNode of the expression DAG, traversing it bottom-up
+
+    the rule receives a non-leaf node whose operands have already been processed by the rule and returns its replacement.
+
+    execution results are memoized to avoid reprocessing repeat ASTNodes
     """
     if expr.is_leaf:
         return expr
 
-    operands = tuple(map(decompose_ops, expr.operands))
-    bit_args = cast(tuple[Bit, ...], operands)
-    uint_args = cast(tuple[UInt, ...], operands)
+    if memo is None:
+        memo = {}
+    key = id(expr)
+    if key not in memo:
+        operands = tuple(traverse_transform(op, rule, memo) for op in expr.operands)
+        memo[key] = rule(rebuild(expr, operands))
+    return memo[key]
 
-    if isinstance(expr, Bit):
-        expr = Bit.cache_bit(expr.bit_type, operands)
-    elif isinstance(expr, UInt):
-        expr = UInt.cache_int(expr.uint_type, expr.width, operands)
-    else:
-        raise TypeError("only decomposition of Bit and UInt nodes are supported")
+def _decompose_ops(expr: ASTNode) -> ASTNode:
+    """
+    decompose operations that cannot be directly built with quantum gates into primitive operators
+    """
+    bit_args = cast(tuple[Bit, ...], expr.operands)
+    uint_args = cast(tuple[UInt, ...], expr.operands)
 
     if isinstance(expr, Bit):
         if expr.bit_type == BitType.OR:
@@ -376,26 +398,15 @@ def decompose_ops(expr: ASTNode) -> ASTNode:
             
     elif isinstance(expr, UInt):
         pass
-    
+
     return expr
 
-def collapse_identities(expr: ASTNode) -> ASTNode:
+def _collapse_identities(expr: ASTNode) -> ASTNode:
     """
     eliminate superfluous expression nodes that are no-ops or can be simplified
     """
-    if expr.is_leaf:
-        return expr
-
-    operands = tuple(map(collapse_identities, expr.operands))
-    bit_args = cast(tuple[Bit, ...], operands)
-    uint_args = cast(tuple[UInt, ...], operands)
-
-    if isinstance(expr, Bit):
-        expr = Bit.cache_bit(expr.bit_type, operands)
-    elif isinstance(expr, UInt):
-        expr = UInt.cache_int(expr.uint_type, expr.width, operands)
-    else:
-        raise TypeError("only collapse of Bit and UInt nodes are supported")
+    bit_args = cast(tuple[Bit, ...], expr.operands)
+    uint_args = cast(tuple[UInt, ...], expr.operands)
 
     if isinstance(expr, Bit):
         if expr.bit_type == BitType.NOT:
@@ -499,14 +510,14 @@ def collapse_identities(expr: ASTNode) -> ASTNode:
             pass
         elif expr.uint_type == UIntType.RSHIFT:
             pass
-    
+
     return expr
 
 def optimize_expr(expr: ASTNode) -> ASTNode:
     """
     apply simplifications to minimize the complexity and gate requirements of the expression tree
     """
-    expr = decompose_ops(expr)
-    expr = collapse_identities(expr)
+    expr = traverse_transform(expr, _decompose_ops)
+    expr = traverse_transform(expr, _collapse_identities)
     return expr
 

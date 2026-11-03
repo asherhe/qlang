@@ -67,10 +67,7 @@ def main():
 
     big_expr = (~~~(d | ~d) ^ ((a<<1)>>1 >= 2)) | ~((b==b) | ~(4>a))
     print_ast(big_expr)
-    big_expr_decomp = qlang.decompose_ops(big_expr)
-    print("decompose_ops:")
-    print_ast(big_expr_decomp)
-    big_expr_opt = qlang.optimize_expr(big_expr_decomp)
+    big_expr_opt = qlang.optimize_expr(big_expr)
     print("optimize_expr:")
     print_ast(big_expr_opt)
     print()
