@@ -49,12 +49,28 @@ def evaluate(
                     if not isinstance(node.operands[0], Bit): 
                         raise ValueError("NOT cannot be applied to a type other than Bit")
                     b = node.operands[0]
-                    var_checker((node,), assignments)
+                    var_checker((b,), assignments)
                     if b.bit_type == BitType.VAR: 
-                        return assignments[cast(str, b.name)]
+                        return not assignments[cast(str, b.name)]
                     if b.bit_type == BitType.CONST: 
                         return not b.value
                     return not evaluate(b, assignments)
+                case BitType.XOR: 
+                    if not isinstance(node.operands[0], Bit) or not isinstance(node.operands[1], Bit): 
+                        raise ValueError("XOR cannot be applied to a type other than Bit")
+                    b1, b2 = node.operands[0], node.operands[1]   # not node.operands[:2] because intellisense can't do polymorphism
+                    var_checker((b1, b2), assignments)
+                    if b1.bit_type not in (BitType.VAR, BitType.CONST) or b2.bit_type not in (BitType.VAR, BitType.CONST): 
+                        return evaluate(b1, assignments) ^ evaluate(b2, assignments)
+                    if b1.bit_type == BitType.VAR: 
+                        b1v = assignments[cast(str, b1.name)]
+                    else: 
+                        b1v = b1.value
+                    if b2.bit_type == BitType.VAR: 
+                        b2v = assignments[cast(str, b1.name)]
+                    else: 
+                        b2v = b1.value
+                    return cast(bool, b1v) ^ cast(bool, b2v)
                 case _: 
                     return NotImplemented
         if isinstance(node, UInt): 
