@@ -9,6 +9,9 @@ class BitType(IntEnum):
     CONST = 1
     VAR = 2
 
+    # this bit is part of a UInt object
+    UINT = auto()
+
     # operators
     NOT = auto()
     XOR = auto()
@@ -91,8 +94,8 @@ class Bit(ASTNode):
     value: bool | None
     # if a variable bit, maps back to the Bit's index in the containing UInt if it exists
     index: int | None
-    # used for validation if this belongs to a UInt
-    parent_width: int | None
+    # reference to the UInt that owns this Bit, for type BitType.UINT
+    parent_uint: UInt | None
 
     def __init__(
         self, 
@@ -101,14 +104,14 @@ class Bit(ASTNode):
         name: str | None = None, 
         value: bool | None = None, 
         index: int | None = None,
-        parent_width: int | None = None,
+        parent_uint: UInt | None = None,
         operands: tuple[ASTNode, ...] = (),
     ): 
         self.bit_type = bit_type
         self.name = name
         self.value = value
         self.index = index
-        self.parent_width = parent_width
+        self.parent_uint = parent_uint
         self.operands = operands
 
     @classmethod
@@ -119,14 +122,16 @@ class Bit(ASTNode):
         name: str | None = None, 
         value: bool | None = None, 
         index: int | None = None,
-        parent_width: int | None = None,
+        parent_uint: UInt | None = None,
         operands: tuple[ASTNode, ...] = (),
         **kwargs
    ) -> tuple[Any, ...]:
         if bit_type == BitType.CONST:
             return (bit_type, value)
         elif bit_type == BitType.VAR:
-            return (bit_type, name, index, parent_width)
+            return (bit_type, name, index, id(parent_uint))
+        elif bit_type == BitType.UINT:
+            return (bit_type, index, id(parent_uint))
         else:
             operand_ids = tuple(id(o) for o in operands)
             return (bit_type, operand_ids)
