@@ -1,7 +1,7 @@
 from .expression import ASTNode, BitType, UIntType, Bit, UInt, const_bit, const_uint
 from collections import defaultdict
-from operator import attrgetter
-from typing import Callable, cast
+from operator import add, attrgetter, mul
+from typing import Any, Callable, cast
 
 # ASTNode -> ASTNode transformation
 NodeTransform = Callable[[ASTNode], ASTNode]
@@ -304,6 +304,23 @@ def coll_OR(expr: Bit, a: Bit, b: Bit):
 
 # ---- UInt operators ----
 
+def _const_reassoc(kind: UIntType, op: Callable[[Any, Any], Any]) -> RuleFn:
+    """
+    build a rule that merges the constants of a chain of an associative, commutative UInt operator
+    (x op c1) op c2  ->  x op (c1 op c2)
+
+    op is used both to combine the constant values (ints) and to build the new node (UInts), so the
+    new node gets the width the operator would normally give it
+    """
+    def rule(expr: UInt, a: UInt, b: UInt):
+        c2, inner = _sorted_uints(a, b)
+        if c2.uint_type == UIntType.CONST and inner.uint_type == kind:
+            c1, x = _sorted_uints(*cast(tuple[UInt, UInt], inner.operands))
+            if c1.uint_type == UIntType.CONST:
+                return op(x, const_uint(op(c1.const_value, c2.const_value)))
+    rule.__name__ = f"coll_{kind.name}_const_reassoc"
+    return rule
+
 @collapse.rule(UIntType.ADD)
 def coll_ADD_const_fold(expr: UInt, a: UInt, b: UInt):
     a, b = _sorted_uints(a, b)
@@ -321,6 +338,9 @@ def coll_ADD_self(expr: UInt, a: UInt, b: UInt):
     if a is b:
         # TODO: uint width of this is cooked, carry bit is lost
         return a << 1
+
+# (x + c1) + c2  ->  x + (c1 + c2)
+coll_ADD_const_reassoc = collapse.rule(UIntType.ADD)(_const_reassoc(UIntType.ADD, add))
 
 @collapse.rule(UIntType.SUB)
 def coll_SUB_const_fold(expr: UInt, a: UInt, b: UInt):
@@ -343,6 +363,20 @@ def coll_SUB_self(expr: UInt, a: UInt, b: UInt):
     if a is b:
         return const_uint(0, a.width)
 
+@collapse.rule(UIntType.SUB)
+def coll_SUB_add_cancel(expr: UInt, a: UInt, b: UInt):
+    """
+    (x + y) - y  ->  x
+    (x + y) - x  ->  y
+    the sum is wide enough to never wrap, so subtracting an addend gives the other one back exactly
+    """
+    if a.uint_type == UIntType.ADD:
+        x, y = cast(tuple[UInt, UInt], a.operands)
+        if y is b:
+            return x
+        if x is b:
+            return y
+
 @collapse.rule(UIntType.MUL)
 def coll_MUL_const_fold(expr: UInt, a: UInt, b: UInt):
     a, b = _sorted_uints(a, b)
@@ -361,6 +395,10 @@ def coll_MUL_const_identity(expr: UInt, a: UInt, b: UInt):
             return const_uint(0, expr.width)
         if a.const_value == 1:
             return b
+
+# (x * c1) * c2  ->  x * (c1 * c2)
+# registered before coll_MUL_pow2 so that (x * 3) * 4 becomes x * 12 instead of a multiply and a shift
+coll_MUL_const_reassoc = collapse.rule(UIntType.MUL)(_const_reassoc(UIntType.MUL, mul))
 
 @collapse.rule(UIntType.MUL)
 def coll_MUL_pow2(expr: UInt, a: UInt, b: UInt):
