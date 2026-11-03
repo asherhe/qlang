@@ -163,6 +163,19 @@ def coll_NE_self(expr: Bit, a: UInt, b: UInt):
     if a is b:
         return const_bit(False)
 
+@collapse.rule(BitType.NE)
+def coll_NE_const_fold(expr: Bit, a: UInt, b: UInt):
+    if a.uint_type == b.uint_type == UIntType.CONST:
+        return const_bit(a.const_value != b.const_value)
+
+@collapse.rule(BitType.NE)
+def coll_NE_const_bounds(expr: Bit, a: UInt, b: UInt):
+    """a != c  ->  1 when c is too large for a to ever equal it, in either operand order"""
+    if b.uint_type == UIntType.CONST and b.const_value >= (1 << a.width):
+        return const_bit(True)
+    if a.uint_type == UIntType.CONST and a.const_value >= (1 << b.width):
+        return const_bit(True)
+
 @collapse.rule(BitType.LT)
 def coll_LT_self(expr: Bit, a: UInt, b: UInt):
     """a < a  ->  0"""
