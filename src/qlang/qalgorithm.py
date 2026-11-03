@@ -4,6 +4,8 @@ from collections.abc import Iterable
 
 from .compile import Oracle, compile_oracle, OutputMode
 
+from .evaluate import evaluate
+
 from qiskit_aer import AerSimulator
 from qiskit import QuantumCircuit, ClassicalRegister, transpile
 
@@ -94,25 +96,19 @@ def _grover_circuit(
 
     return qc, inputs
 
-def evaluate_predicate(
-    pred: Bit, 
-    assignment: dict
-):
-    ...
-
-
 def search(
     params: dict[str, Iterable[int]],
     pred: Bit, # expression tree for the condition
     k: int = 1
-) -> list[dict[str, int]]:
+) -> dict[str, int] | None:
     """
     search for solutions in the space of params that satisfy pred
 
     the search domain is the cartesian product of each parameter's search space specified in params.
 
-    return a list of all solution sets that satisfy the predicate
+    return one solution set that satisfy the predicate
     """
+
     allowed = {
         name: set(values)
         for name, values in params.items()
@@ -135,9 +131,8 @@ def search(
     
     assignments = []
 
-    #flaw: count is not used
-
-    for bitstring in counts:
+    # most frequent outcomes first: after amplification, solutions dominate
+    for bitstring, _ in sorted(counts.items(), key=lambda kv: kv[1], reverse=True):
         bits = bitstring[::-1]
 
         measured_by_qubit = {}
@@ -166,10 +161,10 @@ def search(
         if not valid:
             continue
 
-        if not evaluate_predicate(pred, assignment):
-            continue
+        if not evaluate(pred, assignment):
+            return assignment
 
-        assignments.append(assignment)
+    return None
 
-    return assignments
-
+# 3x+y=5
+# (1,2)
