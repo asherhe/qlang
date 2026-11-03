@@ -15,18 +15,25 @@ class RulePass:
     a named group of rewrite rules, indexed by the node type they apply to
 
     register rules with the .rule() decorator. rules for a node type are tried in registration order
+
+    the table is keyed by (enum class, member) rather than the member alone, because members of
+    different IntEnums with the same value compare and hash equal and would share a table entry
     """
     def __init__(self, name: str):
         self.name = name
-        self.table: dict[NodeType, list[RuleFn]] = defaultdict(list)
+        self.table: dict[tuple[type[NodeType], NodeType], list[RuleFn]] = defaultdict(list)
 
     def rule(self, *types: NodeType) -> Callable[[RuleFn], RuleFn]:
         """register the decorated function as a rule for the given node types"""
         def deco(fn: RuleFn) -> RuleFn:
             for t in types:
-                self.table[t].append(fn)
+                self.table[(type(t), t)].append(fn)
             return fn
         return deco
+
+    def rules_for(self, t: NodeType) -> list[RuleFn]:
+        """the rules registered for a node type, in registration order"""
+        return self.table.get((type(t), t), [])
 
 def node_type(expr: ASTNode) -> NodeType:
     if isinstance(expr, Bit):
@@ -72,7 +79,7 @@ def traverse_transform(
 def run_rule_pass(expr: ASTNode, rule_pass: RulePass) -> ASTNode:
     """apply a rule pass to every node of the expression, bottom-up. the first rule that applies to a node wins"""
     def apply_pass(node: ASTNode) -> ASTNode:
-        for rule in rule_pass.table[node_type(node)]:
+        for rule in rule_pass.rules_for(node_type(node)):
             res = rule(node, *node.operands)
             if res is not None:
                 return res
