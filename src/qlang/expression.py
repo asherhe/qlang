@@ -1,12 +1,14 @@
-from enum import Enum, auto
+from dataclasses import dataclass
+from enum import Enum, IntEnum, auto
+from operator import attrgetter
 from typing import Any, cast
 
 # -------- AST node types --------
 
-class BitType(Enum):
+class BitType(IntEnum):
     # leaf nodes
-    CONST = auto()
-    VAR = auto()
+    CONST = 1
+    VAR = 2
 
     # operators
     NOT = auto()
@@ -15,15 +17,15 @@ class BitType(Enum):
     OR = auto()
     EQ = auto()
     NE = auto()
-    GT = auto()
     LT = auto()
-    GE = auto()
+    GT = auto()
     LE = auto()
+    GE = auto()
 
 class UIntType(Enum):
     # leaf nodes
-    CONST = auto()
-    VAR = auto()
+    CONST = 1
+    VAR = 2
 
     # operators
     ADD = auto()
@@ -340,9 +342,21 @@ def decompose_ops(expr: ASTNode) -> ASTNode:
     """
     decompose operations that cannot be directly built with quantum gates into primitive operators
     """
+    if expr.is_leaf:
+        return expr
+
+    operands = tuple(map(decompose_ops, expr.operands))
+    bit_args = cast(tuple[Bit, ...], operands)
+    uint_args = cast(tuple[UInt, ...], operands)
+
     if isinstance(expr, Bit):
-        bit_args = cast(tuple[Bit, ...], expr.operands)
-        uint_args = cast(tuple[UInt, ...], expr.operands)
+        expr = Bit.cache_bit(expr.bit_type, operands)
+    elif isinstance(expr, UInt):
+        expr = UInt.cache_int(expr.uint_type, expr.width, operands)
+    else:
+        raise TypeError("only decomposition of Bit and UInt nodes are supported")
+
+    if isinstance(expr, Bit):
         if expr.bit_type == BitType.OR:
             # decompose into AND, NOT by de morgan's laws
 
@@ -363,19 +377,122 @@ def decompose_ops(expr: ASTNode) -> ASTNode:
     elif isinstance(expr, UInt):
         pass
     
+    return expr
+
+def collapse_identities(expr: ASTNode) -> ASTNode:
+    """
+    eliminate superfluous expression nodes that are no-ops or can be simplified
+    """
     if expr.is_leaf:
         return expr
 
-    operands = tuple(map(decompose_ops, expr.operands))
+    operands = tuple(map(collapse_identities, expr.operands))
+    bit_args = cast(tuple[Bit, ...], operands)
+    uint_args = cast(tuple[UInt, ...], operands)
+
     if isinstance(expr, Bit):
-        return Bit.cache_bit(expr.bit_type, operands)
+        expr = Bit.cache_bit(expr.bit_type, operands)
     elif isinstance(expr, UInt):
-        return UInt.cache_int(expr.uint_type, expr.width, operands)
-    raise TypeError("only decomposition of Bit and UInt nodes are supported")
+        expr = UInt.cache_int(expr.uint_type, expr.width, operands)
+    else:
+        raise TypeError("only collapse of Bit and UInt nodes are supported")
+
+    if isinstance(expr, Bit):
+        if expr.bit_type == BitType.NOT:
+            # fixed values
+            if bit_args[0].bit_type == BitType.CONST:
+                expr = const_bit(not bit_args[0].value)
+            elif bit_args[0].bit_type == BitType.NOT:
+                expr = bit_args[0].operands[0]
+        elif expr.bit_type == BitType.EQ:
+            # skip - assume all EQ have been decomposed
+            pass
+        elif expr.bit_type == BitType.NE:
+            # a != a  ->  false
+            if uint_args[0] is uint_args[1]:
+                expr = const_bit(False)
+        elif expr.bit_type == BitType.LT:
+            pass
+        elif expr.bit_type == BitType.GT:
+            # skip - assume all GT have been decomposed
+            pass
+        elif expr.bit_type == BitType.LE:
+            # skip - assume all LE have been decomposed
+            pass
+        elif expr.bit_type == BitType.GE:
+            # skip - assume all GE have been decomposed
+            pass
+        else:
+            # now all commutative (Bit, Bit) -> Bit operators
+
+            # sort arguments by type
+            # places CONST and VAR at the front
+            sorted_bits = sorted(bit_args, key=attrgetter("bit_type"))
+            a, b = sorted_bits
+            atype = a.bit_type
+            btype = b.bit_type
+            aval = cast(bool, a.value)
+            bval = cast(bool, b.value)
+
+            # both constants
+            ab_const = atype == btype == BitType.CONST
+
+            # a is ~b
+            a_xor_b = (atype == BitType.NOT and a.operands[0] is b
+                      or btype == BitType.NOT and b.operands[0] is a)
+            if expr.bit_type == BitType.XOR:
+                if ab_const:
+                    # direct evaluation of const
+                    expr = const_bit(aval ^ bval)
+                elif atype == BitType.CONST:
+                    # 0 ^ b  ->  b
+                    # 1 ^ b  ->  ~b
+                    expr = ~b if aval else b
+                elif a is b:
+                    # a ^ a  ->  0
+                    expr = const_bit(False)
+                elif a_xor_b:
+                    # a ^ ~a  ->  1
+                    expr = const_bit(True)
+
+            elif expr.bit_type == BitType.AND:
+                if ab_const:
+                    # direct evaluation of const
+                    expr = const_bit(aval & bval)
+                elif atype == BitType.CONST:
+                    # 0 & b  ->  0
+                    # 1 & b  ->  b
+                    expr = b if aval else const_bit(False)
+                elif a is b:
+                    # a & a  ->  1
+                    expr = const_bit(True)
+                elif a_xor_b:
+                    # a & ~a  ->  0
+                    expr = const_bit(False)
+
+            elif expr.bit_type == BitType.OR:
+                # skip - assume all OR have been decomposed
+                pass
+            
+    elif isinstance(expr, UInt):
+        if expr.uint_type == UIntType.ADD:
+            pass
+        elif expr.uint_type == UIntType.SUB:
+            pass
+        elif expr.uint_type == UIntType.MUL:
+            pass
+        elif expr.uint_type == UIntType.LSHIFT:
+            pass
+        elif expr.uint_type == UIntType.RSHIFT:
+            pass
+    
+    return expr
 
 def optimize_expr(expr: ASTNode) -> ASTNode:
     """
     apply simplifications to minimize the complexity and gate requirements of the expression tree
     """
+    expr = decompose_ops(expr)
+    expr = collapse_identities(expr)
     return expr
 
