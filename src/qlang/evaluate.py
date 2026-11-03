@@ -61,8 +61,10 @@ def get_values(
 def bitwise_only_op(
     node: ASTNode, 
     assignments: dict[str, int | bool],
-    type: BitType,
 ): 
+    if not isinstance(node, Bit): 
+        raise ValueError("this op cannot be applied to a type other than Bit")
+    type = node.bit_type
     match type: 
         case BitType.XOR: 
             name = "XOR"
@@ -92,8 +94,10 @@ def bitwise_only_op(
 def comparison_op(
     node: ASTNode, 
     assignments: dict[str, int | bool],
-    type: BitType,
 ): 
+    if not isinstance(node, Bit): 
+        raise ValueError("this op cannot be applied to a type other than Bit")
+    type = node.bit_type
     u1, u2 = node.operands[0], node.operands[1]
     var_checker((u1, u2), assignments)
     if (get_type(u1) not in (BitType.VAR, BitType.CONST, UIntType.VAR, UIntType.CONST) or
@@ -163,35 +167,20 @@ def evaluate(
         return get_values((node,), assignments)[0]
     else:                  # operators
         if isinstance(node, Bit): 
-            match node.bit_type: 
-                case BitType.NOT: 
-                    b = node.operands[0]
-                    if not isinstance(b, Bit): 
-                        raise ValueError("NOT cannot be applied to a type other than Bit")
-                    var_checker((b,), assignments)
-                    if b.bit_type in (BitType.VAR, BitType.CONST): 
-                        return not get_values((node,), assignments)[0]
-                    return not evaluate(b, assignments)
-                case BitType.XOR: 
-                    return bitwise_only_op(node, assignments, BitType.XOR)
-                case BitType.AND: 
-                    return bitwise_only_op(node, assignments, BitType.AND)
-                case BitType.OR: 
-                    return bitwise_only_op(node, assignments, BitType.OR)
-                case BitType.EQ:
-                    return comparison_op(node, assignments, BitType.EQ)
-                case BitType.NE:
-                    return comparison_op(node, assignments, BitType.NE)
-                case BitType.GT:
-                    return comparison_op(node, assignments, BitType.GT)
-                case BitType.LT:
-                    return comparison_op(node, assignments, BitType.LT)
-                case BitType.GE:
-                    return comparison_op(node, assignments, BitType.GE)
-                case BitType.LE:
-                    return comparison_op(node, assignments, BitType.LE)
-                case _: 
-                    return NotImplemented
+            type = node.bit_type
+            if type == BitType.NOT: 
+                b = node.operands[0]
+                if not isinstance(b, Bit): 
+                    raise ValueError("NOT cannot be applied to a type other than Bit")
+                var_checker((b,), assignments)
+                if b.bit_type in (BitType.VAR, BitType.CONST): 
+                    return not get_values((node,), assignments)[0]
+                return not evaluate(b, assignments)
+            if type in (BitType.XOR, BitType.AND, BitType.OR): 
+                return bitwise_only_op(node, assignments)
+            if type in (BitType.EQ, BitType.NE, BitType.GT, BitType.LT, BitType.GE, BitType.LE): 
+                return comparison_op(node, assignments)
+            return NotImplemented
         if isinstance(node, UInt): 
             if node.uint_type not in (UIntType.ADD, UIntType.MUL, UIntType.LSHIFT, UIntType.RSHIFT): 
                 return NotImplemented
