@@ -48,6 +48,13 @@ class ASTNode:
     def is_leaf(self) -> bool:
         return len(self.operands) == 0
 
+    @classmethod
+    def _get_cache_key(cls, **kwargs) -> tuple[Any, ...]:
+        """
+        unique identifie for this ASTNode, implemented by subclassed types
+        """
+        raise NotImplementedError
+
     def __bool__(self): 
         raise TypeError(
             "AST nodes cannot be used as Python booleans. "
@@ -89,6 +96,26 @@ class Bit(ASTNode):
         self.index = index
         self.parent_width = parent_width
         self.operands = operands
+
+    @classmethod
+    def _get_cache_key(
+        cls,
+        *,
+        bit_type: BitType,
+        name: str | None = None, 
+        value: bool | None = None, 
+        index: int | None = None,
+        parent_width: int | None = None,
+        operands: tuple[ASTNode, ...] = (),
+        **kwargs
+   ) -> tuple[Any, ...]:
+        if bit_type == BitType.CONST:
+            return (cls, bit_type, value)
+        elif bit_type == BitType.VAR:
+            return (cls, bit_type, name, index, parent_width)
+        else:
+            operand_ids = tuple(id(o) for o in operands)
+            return (cls, bit_type, operands)
 
     @staticmethod
     def as_bit(val): 
@@ -186,6 +213,26 @@ class UInt(ASTNode):
         self.name = name
         self.bits = bits
         self.operands = operands
+
+    @classmethod
+    def _get_cache_key(
+        cls,
+        *,
+        uint_type: UIntType, 
+        width: int,
+        name: str | None = None,
+        bits: tuple[Bit, ...] = (),
+        operands: tuple[ASTNode, ...] = (),
+        **kwargs
+   ) -> tuple[Any, ...]:
+        if uint_type == UIntType.CONST:
+            bit_ids = tuple(id(b) for b in bits)
+            return (cls, uint_type, width, bit_ids)
+        elif uint_type == UIntType.VAR:
+            return (cls, uint_type, width, name)
+        else:
+            operand_ids = tuple(id(o) for o in operands)
+            return (cls, uint_type, width, operand_ids)
 
     @property
     def const_value(self) -> int:
