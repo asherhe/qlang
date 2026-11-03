@@ -340,9 +340,6 @@ def decompose_ops(expr: ASTNode) -> ASTNode:
     """
     decompose operations that cannot be directly built with quantum gates into primitive operators
     """
-    if expr.is_leaf:
-        return expr
-
     if isinstance(expr, Bit):
         bit_args = cast(tuple[Bit, ...], expr.operands)
         uint_args = cast(tuple[UInt, ...], expr.operands)
@@ -363,13 +360,18 @@ def decompose_ops(expr: ASTNode) -> ASTNode:
         elif expr.bit_type == BitType.GE:
             expr = ~(uint_args[0] < uint_args[1])
             
-            
     elif isinstance(expr, UInt):
         pass
     
-    expr.operands = tuple(map(decompose_ops, expr.operands))
-    
-    return expr
+    if expr.is_leaf:
+        return expr
+
+    operands = tuple(map(decompose_ops, expr.operands))
+    if isinstance(expr, Bit):
+        return Bit.cache_bit(expr.bit_type, operands)
+    elif isinstance(expr, UInt):
+        return UInt.cache_int(expr.uint_type, expr.width, operands)
+    raise TypeError("only decomposition of Bit and UInt nodes are supported")
 
 def optimize_expr(expr: ASTNode) -> ASTNode:
     """
