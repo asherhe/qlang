@@ -12,4 +12,5 @@ from .expression import (
     var_uint,
     uint,
 )
+from .evaluate import evaluate
 from .qalgorithm import search
