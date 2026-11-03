@@ -12,6 +12,7 @@ from .expression import (
     var_bit,
     const_uint,
     var_uint,
+    bits_uint,
     uint,
     print_ast,
 )
