@@ -223,6 +223,21 @@ class UInt(ASTNode):
         self.bits = bits
         self.operands = operands
 
+        if uint_type != UIntType.BITS:
+            if uint_type == UIntType.CONST:
+                self.bits = tuple(Bit._create(
+                    bit_type=BitType.UINT,
+                    name=name,
+                    index=i,
+                    parent_uint=self,
+                ) for i in range(width))
+            else:
+                self.bits = tuple(Bit._create(
+                    bit_type=BitType.UINT,
+                    index=i,
+                    parent_uint=self
+                ) for i in range(width))
+
     @classmethod
     def _get_cache_key(
         cls,
@@ -344,22 +359,13 @@ def const_bit(value: int | bool) -> Bit:
         value=value,
     )
 
-def var_bit(name: str, index: int | None = None, parent_width: int | None = None) -> Bit:
+def var_bit(name: str) -> Bit:
     """
-    create a named variable Bit node. optional index and parent width fields for Bits that are part of a UInt
+    create a named variable Bit.
     """
-    if parent_width: 
-        if parent_width <= 0: 
-            raise ValueError("specified parent width must be positive")
-        if index is None: 
-            raise ValueError("index must be present if parent width is present")
-        if index < 0 or index >= parent_width: 
-            raise ValueError("index is out of bounds compared to parent width") 
     return Bit._create(
         bit_type=BitType.VAR,
         name=name,
-        index=index,
-        parent_width=parent_width,
     )
 
 def const_uint(value: int, width: int | None = None) -> UInt:
@@ -384,12 +390,10 @@ def var_uint(name: str, width: int) -> UInt:
     """create a variable UInt"""
     if width <= 0: 
         raise ValueError("specified width must be positive")
-    bits = tuple(var_bit(name, i, parent_width=width) for i in range(width))
     return UInt._create(
         uint_type=UIntType.VAR,
         width=width,
         name=name,
-        bits=bits,
     )
 
 def bits_uint(bits: tuple[Bit, ...]) -> UInt:
