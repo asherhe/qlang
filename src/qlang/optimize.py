@@ -49,9 +49,9 @@ def rebuild(expr: ASTNode, operands: tuple[ASTNode, ...]) -> ASTNode:
     if all(old is new for old, new in zip(expr.operands, operands)):
         return expr
     if isinstance(expr, Bit):
-        return Bit.cache_bit(expr.bit_type, operands)
+        return Bit._create(bit_type=expr.bit_type, operands=operands)
     if isinstance(expr, UInt):
-        return UInt.cache_int(expr.uint_type, expr.width, operands)
+        return UInt._create(uint_type=expr.uint_type, width=expr.width, operands=operands)
     raise TypeError("only Bit and UInt nodes are supported")
 
 def traverse_transform(
