@@ -331,7 +331,7 @@ def const_bit(value: int | bool) -> Bit:
 
     if isinstance(value, int):
         value = value != 0
-    return Bit(
+    return Bit._create(
         bit_type=BitType.CONST,
         value=value,
     )
@@ -347,7 +347,7 @@ def var_bit(name: str, index: int | None = None, parent_width: int | None = None
             raise ValueError("index must be present if parent width is present")
         if index < 0 or index >= parent_width: 
             raise ValueError("index is out of bounds compared to parent width") 
-    return Bit(
+    return Bit._create(
         bit_type=BitType.VAR,
         name=name,
         index=index,
@@ -366,7 +366,7 @@ def const_uint(value: int, width: int | None = None) -> UInt:
         raise ValueError("value does not fit in specified width")
     
     bits = tuple(const_bit((value >> i) & 1) for i in range(width))
-    return UInt(
+    return UInt._create(
         uint_type=UIntType.CONST,
         width=width,
         bits=bits,
@@ -377,7 +377,7 @@ def var_uint(name: str, width: int) -> UInt:
     if width <= 0: 
         raise ValueError("specified width must be positive")
     bits = tuple(var_bit(name, i, parent_width=width) for i in range(width))
-    return UInt(
+    return UInt._create(
         uint_type=UIntType.VAR,
         width=width,
         name=name,
