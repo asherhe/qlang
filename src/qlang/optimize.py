@@ -317,7 +317,12 @@ def _const_reassoc(kind: UIntType, op: Callable[[Any, Any], Any]) -> RuleFn:
         if c2.uint_type == UIntType.CONST and inner.uint_type == kind:
             c1, x = _sorted_uints(*cast(tuple[UInt, UInt], inner.operands))
             if c1.uint_type == UIntType.CONST:
-                return op(x, const_uint(op(c1.const_value, c2.const_value)))
+                # size the merged constant so the rebuilt node keeps the width the parent relies on
+                if kind == UIntType.ADD:
+                    width = max(c1.width, c2.width) + 1
+                else:  # MUL
+                    width = c1.width + c2.width
+                return op(x, const_uint(op(c1.const_value, c2.const_value), width))
     rule.__name__ = f"coll_{kind.name}_const_reassoc"
     return rule
 
@@ -325,7 +330,8 @@ def _const_reassoc(kind: UIntType, op: Callable[[Any, Any], Any]) -> RuleFn:
 def coll_ADD_const_fold(expr: UInt, a: UInt, b: UInt):
     a, b = _sorted_uints(a, b)
     if a.uint_type == b.uint_type == UIntType.CONST:
-        return const_uint(a.const_value + b.const_value)
+        # the ADD node's width carries the carry bit; a parent may depend on it
+        return const_uint(a.const_value + b.const_value, max(a.width, b.width) + 1)
 
 @collapse.rule(UIntType.ADD)
 def coll_ADD_const_identity(expr: UInt, a: UInt, b: UInt):
@@ -381,7 +387,8 @@ def coll_SUB_add_cancel(expr: UInt, a: UInt, b: UInt):
 def coll_MUL_const_fold(expr: UInt, a: UInt, b: UInt):
     a, b = _sorted_uints(a, b)
     if a.uint_type == b.uint_type == UIntType.CONST:
-        return const_uint(a.const_value * b.const_value)
+        # the MUL node's width is the full product width; a parent may depend on it
+        return const_uint(a.const_value * b.const_value, a.width + b.width)
 
 @collapse.rule(UIntType.MUL)
 def coll_MUL_const_identity(expr: UInt, a: UInt, b: UInt):
@@ -453,7 +460,8 @@ def coll_LSHIFT_merge(expr: UInt, a: UInt, b: UInt):
 @collapse.rule(UIntType.RSHIFT)
 def coll_RSHIFT_const_fold(expr: UInt, a: UInt, b: UInt):
     if a.uint_type == b.uint_type == UIntType.CONST:
-        return const_uint(a.const_value >> b.const_value)
+        # the RSHIFT node keeps the shifted value's width; a parent may depend on it
+        return const_uint(a.const_value >> b.const_value, a.width)
 
 @collapse.rule(UIntType.RSHIFT)
 def coll_RSHIFT_const_identity(expr: UInt, a: UInt, b: UInt):
