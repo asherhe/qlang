@@ -57,6 +57,37 @@ def get_values(
             return NotImplemented
     return values
 
+# XOR, AND, OR
+def bitwise_only_op(
+    node: ASTNode, 
+    assignments: dict[str, int | bool],
+    type: BitType,
+): 
+    match type: 
+        case BitType.XOR: 
+            name = "XOR"
+        case BitType.AND: 
+            name = "AND"
+        case BitType.OR: 
+            name = "OR"
+        case _: 
+            return NotImplemented
+    b1, b2 = node.operands[0], node.operands[1]   # not node.operands[:2] because intellisense can't do polymorphism
+    if not isinstance(b1, Bit) or not isinstance(b2, Bit): 
+        raise ValueError(f"{name} cannot be applied to a type other than Bit")
+    var_checker((b1, b2), assignments)
+    if b1.bit_type not in (BitType.VAR, BitType.CONST) or b2.bit_type not in (BitType.VAR, BitType.CONST): 
+        b1v, b2v = evaluate(b1, assignments), evaluate(b2, assignments)
+    else: 
+        b1v, b2v = get_values((b1, b2), assignments)
+    match type: 
+        case BitType.XOR: 
+            return b1v ^ b2v
+        case BitType.AND: 
+            return b1v & b2v
+        case BitType.OR: 
+            return b1v | b2v
+
 def evaluate(
     node: ASTNode, 
     assignments: dict[str, int | bool],
@@ -76,32 +107,11 @@ def evaluate(
                         return not get_values((node,), assignments)[0]
                     return not evaluate(b, assignments)
                 case BitType.XOR: 
-                    b1, b2 = node.operands[0], node.operands[1]   # not node.operands[:2] because intellisense can't do polymorphism
-                    if not isinstance(b1, Bit) or not isinstance(b2, Bit): 
-                        raise ValueError("XOR cannot be applied to a type other than Bit")
-                    var_checker((b1, b2), assignments)
-                    if b1.bit_type not in (BitType.VAR, BitType.CONST) or b2.bit_type not in (BitType.VAR, BitType.CONST): 
-                        return evaluate(b1, assignments) ^ evaluate(b2, assignments)
-                    b1v, b2v = get_values((b1, b2), assignments)
-                    return b1v ^ b2v
+                    return bitwise_only_op(node, assignments, BitType.XOR)
                 case BitType.AND: 
-                    b1, b2 = node.operands[0], node.operands[1]
-                    if not isinstance(b1, Bit) or not isinstance(b2, Bit): 
-                        raise ValueError("AND cannot be applied to a type other than Bit")
-                    var_checker((b1, b2), assignments)
-                    if b1.bit_type not in (BitType.VAR, BitType.CONST) or b2.bit_type not in (BitType.VAR, BitType.CONST): 
-                        return evaluate(b1, assignments) & evaluate(b2, assignments)
-                    b1v, b2v = get_values((b1, b2), assignments)
-                    return b1v & b2v
+                    return bitwise_only_op(node, assignments, BitType.AND)
                 case BitType.OR: 
-                    b1, b2 = node.operands[0], node.operands[1]
-                    if not isinstance(b1, Bit) or not isinstance(b2, Bit): 
-                        raise ValueError("OR cannot be applied to a type other than Bit")
-                    var_checker((b1, b2), assignments)
-                    if b1.bit_type not in (BitType.VAR, BitType.CONST) or b2.bit_type not in (BitType.VAR, BitType.CONST): 
-                        return evaluate(b1, assignments) | evaluate(b2, assignments)
-                    b1v, b2v = get_values((b1, b2), assignments)
-                    return b1v | b2v
+                    return bitwise_only_op(node, assignments, BitType.OR)
                 case BitType.EQ:
                     u1, u2 = node.operands[0], node.operands[1]
                     var_checker((u1, u2), assignments)
