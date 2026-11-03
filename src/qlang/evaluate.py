@@ -117,6 +117,43 @@ def comparison_op(
         case _: 
             return NotImplemented
 
+# ADD, MUL, LSHIFT, RSHIFT
+def int_only_op(
+    node: ASTNode, 
+    assignments: dict[str, int | bool],
+): 
+    if not isinstance(node, UInt): 
+        raise ValueError("this op cannot be applied to a type other than UInt")
+    type = node.uint_type
+    match type: 
+        case UIntType.ADD: 
+            name = "ADD"
+        case UIntType.MUL: 
+            name = "MUL"
+        case UIntType.LSHIFT: 
+            name = "LSHIFT"
+        case UIntType.RSHIFT: 
+            name = "RSHIFT"
+        case _: 
+            return NotImplemented
+    u1, u2 = node.operands[0], node.operands[1]
+    if not isinstance(u1, UInt) or not isinstance(u2, UInt): 
+        raise ValueError(f"{name} cannot be applied to a type other than UInt")
+    var_checker((u1, u2), assignments)
+    if get_type(u1) not in (UIntType.VAR, UIntType.CONST) or get_type(u2) not in (UIntType.VAR, UIntType.CONST):
+        u1v, u2v = evaluate(u1, assignments), evaluate(u2, assignments)
+    else: 
+        u1v, u2v = get_values((u1, u2), assignments)
+    match type: 
+        case UIntType.ADD: 
+            return u1v + u2v
+        case UIntType.MUL: 
+            return u1v * u2v
+        case UIntType.LSHIFT: 
+            return u1v << u2v
+        case UIntType.RSHIFT: 
+            return u1v >> u2v
+
 def evaluate(
     node: ASTNode, 
     assignments: dict[str, int | bool],
@@ -156,43 +193,7 @@ def evaluate(
                 case _: 
                     return NotImplemented
         if isinstance(node, UInt): 
-            match node.uint_type: 
-                case UIntType.ADD: 
-                    u1, u2 = node.operands[0], node.operands[1]
-                    if not isinstance(u1, UInt) or not isinstance(u2, UInt): 
-                        raise ValueError("ADD cannot be applied to a type other than UInt")
-                    var_checker((u1, u2), assignments)
-                    if get_type(u1) not in (UIntType.VAR, UIntType.CONST) or get_type(u2) not in (UIntType.VAR, UIntType.CONST):
-                        return evaluate(u1, assignments) + evaluate(u2, assignments)
-                    u1v, u2v = get_values((u1, u2), assignments)
-                    return u1v + u2v
-                case UIntType.MUL: 
-                    u1, u2 = node.operands[0], node.operands[1]
-                    if not isinstance(u1, UInt) or not isinstance(u2, UInt): 
-                        raise ValueError("MUL cannot be applied to a type other than UInt")
-                    var_checker((u1, u2), assignments)
-                    if get_type(u1) not in (UIntType.VAR, UIntType.CONST) or get_type(u2) not in (UIntType.VAR, UIntType.CONST):
-                        return evaluate(u1, assignments) * evaluate(u2, assignments)
-                    u1v, u2v = get_values((u1, u2), assignments)
-                    return u1v * u2v
-                case UIntType.LSHIFT: 
-                    u1, u2 = node.operands[0], node.operands[1]
-                    if not isinstance(u1, UInt) or not isinstance(u2, UInt): 
-                        raise ValueError("LSHIFT cannot be applied to a type other than UInt")
-                    var_checker((u1, u2), assignments)
-                    if get_type(u1) not in (UIntType.VAR, UIntType.CONST) or get_type(u2) not in (UIntType.VAR, UIntType.CONST):
-                        return evaluate(u1, assignments) << evaluate(u2, assignments)
-                    u1v, u2v = get_values((u1, u2), assignments)
-                    return u1v << u2v
-                case UIntType.RSHIFT: 
-                    u1, u2 = node.operands[0], node.operands[1]
-                    if not isinstance(u1, UInt) or not isinstance(u2, UInt): 
-                        raise ValueError("RSHIFT cannot be applied to a type other than UInt")
-                    var_checker((u1, u2), assignments)
-                    if get_type(u1) not in (UIntType.VAR, UIntType.CONST) or get_type(u2) not in (UIntType.VAR, UIntType.CONST):
-                        return evaluate(u1, assignments) << evaluate(u2, assignments)
-                    u1v, u2v = get_values((u1, u2), assignments)
-                    return u1v << u2v
-                case _: 
-                    return NotImplemented
+            if node.uint_type not in (UIntType.ADD, UIntType.MUL, UIntType.LSHIFT, UIntType.RSHIFT): 
+                return NotImplemented
+            return int_only_op(node, assignments)
         return NotImplemented
