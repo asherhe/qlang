@@ -126,7 +126,7 @@ class Bit(ASTNode):
             return (bit_type, name, index, parent_width)
         else:
             operand_ids = tuple(id(o) for o in operands)
-            return (bit_type, operands)
+            return (bit_type, operand_ids)
 
     @staticmethod
     def as_bit(val): 
@@ -343,7 +343,7 @@ def var_bit(name: str, index: int | None = None, parent_width: int | None = None
     if parent_width: 
         if parent_width <= 0: 
             raise ValueError("specified parent width must be positive")
-        if not index: 
+        if index is None: 
             raise ValueError("index must be present if parent width is present")
         if index < 0 or index >= parent_width: 
             raise ValueError("index is out of bounds compared to parent width") 
