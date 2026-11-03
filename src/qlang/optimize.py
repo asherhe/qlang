@@ -357,6 +357,25 @@ def coll_LSHIFT_const_identity(expr: UInt, a: UInt, b: UInt):
     if a.uint_type == UIntType.CONST and a.const_value == 0:
         return const_uint(0, expr.width)
 
+@collapse.rule(UIntType.LSHIFT)
+def coll_LSHIFT_overshift(expr: UInt, a: UInt, b: UInt):
+    """a << c  ->  0 when c >= width"""
+    if b.uint_type == UIntType.CONST and b.const_value >= expr.width:
+        return const_uint(0, expr.width)
+
+@collapse.rule(UIntType.LSHIFT)
+def coll_LSHIFT_merge(expr: UInt, a: UInt, b: UInt):
+    """(x << c1) << c2  ->  x << (c1 + c2)"""
+    # expr.width <= a.width: bits the inner shift truncated would also be truncated by the outer width
+    if a.uint_type == UIntType.LSHIFT and b.uint_type == UIntType.CONST and expr.width <= a.width:
+        x, c1 = cast(tuple[UInt, UInt], a.operands)
+        if c1.uint_type == UIntType.CONST:
+            total = c1.const_value + b.const_value
+            if total >= expr.width:
+                return const_uint(0, expr.width)
+            # build the node directly so the shift keeps expr.width (see coll_MUL_pow2)
+            return UInt.cache_int(UIntType.LSHIFT, expr.width, (x, const_uint(total)))
+
 @collapse.rule(UIntType.RSHIFT)
 def coll_RSHIFT_const_fold(expr: UInt, a: UInt, b: UInt):
     if a.uint_type == b.uint_type == UIntType.CONST:
@@ -372,6 +391,23 @@ def coll_RSHIFT_const_identity(expr: UInt, a: UInt, b: UInt):
         return a
     if a.uint_type == UIntType.CONST and a.const_value == 0:
         return const_uint(0, expr.width)
+
+@collapse.rule(UIntType.RSHIFT)
+def coll_RSHIFT_overshift(expr: UInt, a: UInt, b: UInt):
+    """a >> c  ->  0 when c >= width"""
+    if b.uint_type == UIntType.CONST and b.const_value >= a.width:
+        return const_uint(0, expr.width)
+
+@collapse.rule(UIntType.RSHIFT)
+def coll_RSHIFT_merge(expr: UInt, a: UInt, b: UInt):
+    """(x >> c1) >> c2  ->  x >> (c1 + c2)"""
+    if a.uint_type == UIntType.RSHIFT and b.uint_type == UIntType.CONST:
+        x, c1 = cast(tuple[UInt, UInt], a.operands)
+        if c1.uint_type == UIntType.CONST:
+            total = c1.const_value + b.const_value
+            if total >= x.width:
+                return const_uint(0, expr.width)
+            return x >> total
 
 
 def optimize_expr(expr: ASTNode) -> ASTNode:
