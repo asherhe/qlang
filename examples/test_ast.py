@@ -14,7 +14,7 @@ def print_ast(expr: ASTNode, prefix="", is_tail=True):
             text = f"Bit {bit.name}{idx_str}"
         else:
             BIT_OPS = {
-                BitType.NOT: "!",
+                BitType.NOT: "~",
                 BitType.XOR: "^",
                 BitType.AND: "&",
                 BitType.OR: "|",
@@ -41,6 +41,7 @@ def print_ast(expr: ASTNode, prefix="", is_tail=True):
                 UIntType.RSHIFT: ">>",
             }
             text = f"UInt op{UINT_OPS[uint.uint_type]}"
+        text = f"{text} ({uint.width}-bit)"
 
     print(f"{prefix}{connector}{text}")
 
@@ -65,6 +66,16 @@ def main():
 
     d = c == 3
     print_ast(d)
+    print()
+
+    big_expr = (d | ~d) ^ ((a<<1)>>1 == 1)
+    print_ast(big_expr)
+    big_expr_decomp = qlang.decompose_ops(big_expr)
+    print("decompose_ops:")
+    print_ast(big_expr_decomp)
+    big_expr_opt = qlang.optimize_expr(big_expr_decomp)
+    print("optimize_expr:")
+    print_ast(big_expr_opt)
     print()
 
 if __name__ == "__main__":

@@ -326,11 +326,11 @@ def decompose_ops(expr: ASTNode) -> ASTNode:
     """
     decompose operations that cannot be directly built with quantum gates into primitive operators
     """
-    ...
+    return expr
 
 def optimize_expr(expr: ASTNode) -> ASTNode:
     """
     apply simplifications to minimize the complexity and gate requirements of the expression tree
     """
-    ...
+    return expr
 
