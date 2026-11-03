@@ -21,7 +21,7 @@ class BitType(IntEnum):
     LE = auto()
     GE = auto()
 
-class UIntType(Enum):
+class UIntType(IntEnum):
     # leaf nodes
     CONST = 1
     VAR = 2
@@ -304,7 +304,7 @@ def var_bit(name: str, index: int | None = None) -> Bit:
         index=index,
     )
 
-def const_uint(value: int, width: int | None) -> UInt:
+def const_uint(value: int, width: int | None = None) -> UInt:
     """create a constant UInt of CONST Bits. if width is not given, infer the smallest width that fits val"""
     if width is None:
         width = max(1, value.bit_length())

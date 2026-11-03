@@ -1,4 +1,4 @@
-from .expression import ASTNode, BitType, UIntType, Bit, UInt, const_bit
+from .expression import ASTNode, BitType, UIntType, Bit, UInt, const_bit, const_uint
 from collections import defaultdict
 from operator import attrgetter
 from typing import Callable, cast
@@ -7,6 +7,7 @@ from typing import Callable, cast
 NodeTransform = Callable[[ASTNode], ASTNode]
 # some node type
 NodeType = BitType | UIntType
+
 # a rule receives the node and its operands unpacked, and returns a replacement or None if it does not apply
 RuleFn = Callable[..., ASTNode | None]
 
@@ -123,6 +124,11 @@ collapse = RulePass("collapse")
 def _sorted_bits(a: Bit, b: Bit) -> tuple[Bit, Bit]:
     """order the operands of a commutative operator by type, placing CONST and VAR at the front"""
     first, second = sorted((a, b), key=attrgetter("bit_type"))
+    return first, second
+
+def _sorted_uints(a: UInt, b: UInt) -> tuple[UInt, UInt]:
+    """order the operands of a commutative operator by type, placing CONST and VAR at the front"""
+    first, second = sorted((a, b), key=attrgetter("uint_type"))
     return first, second
 
 def _is_negation_pair(a: Bit, b: Bit) -> bool:
@@ -264,24 +270,36 @@ def coll_OR(expr: Bit, a: Bit, b: Bit):
 # ---- UInt operators ----
 
 @collapse.rule(UIntType.ADD)
-def coll_ADD(expr: UInt, a: UInt, b: UInt):
-    pass
+def coll_ADD_const_fold(expr: UInt, a: UInt, b: UInt):
+    a, b = _sorted_uints(a, b)
+    if a.uint_type == b.uint_type == UIntType.CONST:
+        return const_uint(a.const_value + b.const_value)
 
 @collapse.rule(UIntType.SUB)
-def coll_SUB(expr: UInt, a: UInt, b: UInt):
-    pass
+def coll_SUB_const_fold(expr: UInt, a: UInt, b: UInt):
+    if a.uint_type == b.uint_type == UIntType.CONST:
+        diff = a.const_value << b.const_value
+        width = max(a.width, b.width)
+        if (diff < 0):
+            # convert to two's complement
+            diff += 1 << width
+        return const_uint(diff, width)
 
 @collapse.rule(UIntType.MUL)
-def coll_MUL(expr: UInt, a: UInt, b: UInt):
-    pass
+def coll_MUL_const_fold(expr: UInt, a: UInt, b: UInt):
+    a, b = _sorted_uints(a, b)
+    if a.uint_type == b.uint_type == UIntType.CONST:
+        return const_uint(a.const_value * b.const_value)
 
 @collapse.rule(UIntType.LSHIFT)
-def coll_LSHIFT(expr: UInt, a: UInt, b: UInt):
-    pass
+def coll_LSHIFT_const_fold(expr: UInt, a: UInt, b: UInt):
+    if a.uint_type == b.uint_type == UIntType.CONST:
+        return const_uint(a.const_value << b.const_value, a.width)
 
 @collapse.rule(UIntType.RSHIFT)
-def coll_RSHIFT(expr: UInt, a: UInt, b: UInt):
-    pass
+def coll_RSHIFT_const_fold(expr: UInt, a: UInt, b: UInt):
+    if a.uint_type == b.uint_type == UIntType.CONST:
+        return const_uint(a.const_value >> b.const_value)
 
 
 def optimize_expr(expr: ASTNode) -> ASTNode:
