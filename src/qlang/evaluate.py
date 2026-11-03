@@ -28,10 +28,13 @@ def _var_checker(
                     raise ValueError(f"assignment value '{node.name}' must be non-negative")
                 elif isinstance(node, UInt) and value >= (1 << node.width): 
                     raise ValueError(f"assignment value '{node.name}' cannot be larger than width")
-                elif isinstance(node, Bit) and value >= (1 << cast(int, node.parent_width)): 
-                    if not node.parent_width: 
+                elif isinstance(node, Bit): 
+                    width = node.parent_width
+                    if width is None: 
                         raise ValueError("parent width missing for Bit belonging to UInt")
-                    if value >= (1 << node.parent_width): 
+                    if width <= 0: 
+                        raise ValueError("parent width must be positive")
+                    if value >= (1 << width): 
                         raise ValueError(f"assignment value '{node.name}' cannot be larger than parent width")
         elif isinstance(node, Bit) and node.bit_type == BitType.CONST: 
             if node.value is None: 

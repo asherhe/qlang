@@ -53,7 +53,7 @@ class ASTNode:
     @classmethod
     def _get_cache_key(cls, **kwargs) -> tuple[Any, ...]:
         """
-        unique identifie for this ASTNode, implemented by subclassed types
+        unique identifier for this ASTNode, implemented by subclassed types
         """
         raise NotImplementedError
 
@@ -340,7 +340,7 @@ def var_bit(name: str, index: int | None = None, parent_width: int | None = None
     """
     create a named variable Bit node. optional index and parent width fields for Bits that are part of a UInt
     """
-    if parent_width: 
+    if parent_width is not None: 
         if parent_width <= 0: 
             raise ValueError("specified parent width must be positive")
         if index is None: 

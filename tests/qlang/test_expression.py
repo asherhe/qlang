@@ -32,7 +32,6 @@ def test_invalid_constants_rejected(value, width):
         const_uint(value, width)
 
 
-@pytest.mark.xfail(strict=True, raises=ValueError, reason="var_bit uses 'if not index', rejecting valid index zero in every UInt")
 def test_public_variable_factory_supports_bit_zero():
     node = var_uint("x", 3)
     assert node.name == "x"
@@ -41,7 +40,6 @@ def test_public_variable_factory_supports_bit_zero():
     assert all(b.name == "x" and b.parent_width == 3 for b in node.bits)
 
 
-@pytest.mark.xfail(strict=True, raises=ValueError, reason="uint variable construction reaches var_bit's invalid rejection of index zero")
 def test_uint_dispatches_variable_factory():
     node = uint("x", 2)
     assert isinstance(node, UInt)
@@ -59,7 +57,6 @@ def test_variable_requires_width():
         uint("x")
 
 
-@pytest.mark.xfail(strict=True, raises=ValueError, reason="var_bit treats index zero as missing")
 def test_index_zero_is_valid():
     bit = var_bit("x", index=0, parent_width=3)
     assert bit.index == 0
@@ -107,8 +104,8 @@ def test_operation_nodes_are_shared_by_operand_identity(x, y, p, q):
 
 def test_uint_cache_key_includes_width(x):
     amount = const_uint(1)
-    narrow = UInt.cache_int(UIntType.LSHIFT, 3, (x, amount))
-    wide = UInt.cache_int(UIntType.LSHIFT, 4, (x, amount))
+    narrow = UInt._create(uint_type=UIntType.LSHIFT, width=3, operands=(x, amount))
+    wide = UInt._create(uint_type=UIntType.LSHIFT, width=4, operands=(x, amount))
     assert narrow is not wide
     assert (narrow.width, wide.width) == (3, 4)
 
