@@ -73,6 +73,14 @@ class Bit(ASTNode):
         self.operands = operands
 
     @staticmethod
+    def as_bit(val): 
+        if isinstance(val, Bit): 
+            return val
+        if isinstance(val, (bool, int)): 
+            return const_bit(val)
+        return NotImplemented
+
+    @staticmethod
     def _cache_bit(type: BitType, operands: tuple[ASTNode, ...]): 
         key = (Bit, type, tuple(id(node) for node in operands))
         if key not in ASTNode.cache: 
@@ -84,10 +92,10 @@ class Bit(ASTNode):
 
     @staticmethod
     def _operator(type: BitType, **kwargs): 
-        left = kwargs['self']
+        left = Bit.as_bit(kwargs['self'])
         if 'other' not in kwargs: 
             return Bit._cache_bit(type, (left,))
-        right = kwargs['other']
+        right = Bit.as_bit(kwargs['other'])
         if isinstance(right, (bool, int)): 
             right = const_bit(right)
         if not isinstance(right, Bit): 
@@ -164,6 +172,14 @@ class UInt(ASTNode):
         self.operands = operands
 
     @staticmethod
+    def as_uint(val): 
+        if isinstance(val, UInt): 
+            return val
+        if isinstance(val, (bool, int)): 
+            return const_uint(val, width=None)
+        return NotImplemented
+    
+    @staticmethod
     def _cache_int(type: UIntType, width: int, operands): 
         key = (UIntType, type, tuple(id(node) for node in operands))
         if key not in ASTNode.cache: 
@@ -176,15 +192,22 @@ class UInt(ASTNode):
 
     @staticmethod
     def _operator(type: UIntType, **kwargs): 
-        width = kwargs['width']
-        left = kwargs['self']
+        left = UInt.as_uint(kwargs['self'])
         if 'other' not in kwargs: 
-            return UInt._cache_int(type, width, (left,))
-        right = kwargs['other']
+            return UInt._cache_int(type, left.width, (left,))
+        right = UInt.as_uint(kwargs['other'])
         if isinstance(right, (bool, int)): 
-            right = const_uint(right, width)
+            right = UInt.as_uint(right)
         if not isinstance(right, UInt): 
             return NotImplemented
+        if type == UIntType.ADD: 
+            width = max(left.width, right.width) + 1
+        elif type == UIntType.MUL: 
+            width = left.width * right.width
+        elif type == (UIntType.LSHIFT, UIntType.RSHIFT): 
+            width = left.width                                 # this assumes fixed-width behavior for now
+        else: 
+            raise ValueError(f"unsupported UInt operation: {type}")
         return UInt._cache_int(type, width, (left, right))
 
     def __add__(self, other):
