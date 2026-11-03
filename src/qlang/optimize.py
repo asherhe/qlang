@@ -1,4 +1,4 @@
-from .expression import ASTNode, BitType, UIntType, Bit, UInt, const_bit, const_uint
+from .expression import ASTNode, BitType, UIntType, Bit, UInt, bits_uint, const_bit, const_uint
 from collections import defaultdict
 from operator import add, attrgetter, mul
 from typing import Any, Callable, cast
@@ -342,7 +342,7 @@ def coll_ADD_const_identity(expr: UInt, a: UInt, b: UInt):
 @collapse.rule(UIntType.ADD)
 def coll_ADD_self(expr: UInt, a: UInt, b: UInt):
     if a is b:
-        return UInt._create(uint_type=UIntType.LSHIFT, width=a.width+1, operands=(a, const_uint(1, 1)))
+        return bits_uint((const_bit(0),) + a.bits)
 
 # (x + c1) + c2  ->  x + (c1 + c2)
 coll_ADD_const_reassoc = collapse.rule(UIntType.ADD)(_const_reassoc(UIntType.ADD, add))
@@ -417,8 +417,9 @@ def coll_MUL_pow2(expr: UInt, a: UInt, b: UInt):
         # 0 and 1 already handled by coll_MUL_const_identity
         if c > 1 and c & (c - 1) == 0:
             k = c.bit_length() - 1
-            # TODO: sizing is once again cooked
-            return UInt._create(uint_type=UIntType.LSHIFT, width=expr.width, operands=(b, const_uint(k)))
+            bits = (const_bit(0),) * k + b.bits
+            bits += (const_bit(0),) * (expr.width - len(bits))
+            return bits_uint(bits)
 
 @collapse.rule(UIntType.LSHIFT)
 def coll_LSHIFT_const_fold(expr: UInt, a: UInt, b: UInt):
@@ -453,8 +454,7 @@ def coll_LSHIFT_merge(expr: UInt, a: UInt, b: UInt):
             total = c1.const_value + b.const_value
             if total >= expr.width:
                 return const_uint(0, expr.width)
-            # build the node directly so the shift keeps expr.width (see coll_MUL_pow2)
-            return UInt._create(uint_type=UIntType.LSHIFT, width=expr.width, operands=(x, const_uint(total)))
+            return x << total
 
 @collapse.rule(UIntType.RSHIFT)
 def coll_RSHIFT_const_fold(expr: UInt, a: UInt, b: UInt):
