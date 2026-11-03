@@ -264,6 +264,12 @@ def uint(val: int | str, width: int | None = None) -> UInt:
 
 # -------- expression optimization --------
 
+def decompose_ops(expr: ASTNode) -> ASTNode:
+    """
+    decompose operations that cannot be directly built with quantum gates into primitive operators
+    """
+    ...
+
 def optimize_expr(expr: ASTNode) -> ASTNode:
     """
     apply simplifications to minimize the complexity and gate requirements of the expression tree
