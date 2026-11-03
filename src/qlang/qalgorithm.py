@@ -53,11 +53,42 @@ def _diffuser(
 
     return qc
     
+def _grover_circuit(
+    oracle: Oracle, 
+    k: int
+) -> tuple[QuantumCircuit, list[int]]:
+    if k < 0:
+        raise ValueError("k must be non-negative")
+    
+    inputs = oracle.inputs
+
+    inputs = [
+        qubits
+        for var_values in inputs.values()
+        for qubits in var_values
+    ]
+
+    if not inputs:
+        raise ValueError("need at least one qubit")
+
+    qc = QuantumCircuit(oracle.circuit.num_qubits)
+
+    # initialize with equal probability
+    qc.h(inputs)
+
+    phase_oracle = _phase_oracle(oracle)
+    diffuser = _diffuser(qc.num_qubits, inputs)
+
+    for _ in range(k):
+        qc.compose(phase_oracle, inplace=True)
+        qc.compose(diffuser, inplace=True)
+
+    return qc, inputs
 
 
 def search(
     params: dict[str, Iterable[int]],
-    pred: Bit,
+    pred: Bit, # expression tree for the condition
 ) -> list[dict[str, int]]:
     """
     search for solutions in the space of params that satisfy pred
