@@ -160,6 +160,8 @@ def _int_only_op(
     match type: 
         case UIntType.ADD: 
             name = "ADD"
+        case UIntType.SUB: 
+            name = "SUB"
         case UIntType.MUL: 
             name = "MUL"
         case UIntType.LSHIFT: 
@@ -183,6 +185,9 @@ def _int_only_op(
     match type: 
         case UIntType.ADD: 
             return u1v + u2v
+        case UIntType.SUB: 
+            mask = (1 << node.width) - 1
+            return (u1v - u2v) & mask    # two's complement
         case UIntType.MUL: 
             return u1v * u2v
         case UIntType.LSHIFT: 
@@ -225,7 +230,7 @@ def _evaluate_uncached(
         if isinstance(node, UInt): 
             if len(node.operands) != 2: 
                 raise ValueError("binary operations must have exactly two operands")
-            if node.uint_type not in (UIntType.ADD, UIntType.MUL, UIntType.LSHIFT, UIntType.RSHIFT): 
+            if node.uint_type not in (UIntType.ADD, UIntType.SUB, UIntType.MUL, UIntType.LSHIFT, UIntType.RSHIFT): 
                 raise ValueError("UIntType not recognized")
             return _int_only_op(node, assignments, memo)
         raise ValueError("ASTNode not recognized")
