@@ -327,6 +327,20 @@ def coll_MUL_const_identity(expr: UInt, a: UInt, b: UInt):
         if a.const_value == 1:
             return b
 
+@collapse.rule(UIntType.MUL)
+def coll_MUL_pow2(expr: UInt, a: UInt, b: UInt):
+    """
+    2^k * b  ->  b << k
+    """
+    a, b = _sorted_uints(a, b)
+    if a.uint_type == UIntType.CONST:
+        c = a.const_value
+        # 0 and 1 already handled by coll_MUL_const_identity
+        if c > 1 and c & (c - 1) == 0:
+            k = c.bit_length() - 1
+            # TODO: sizing is once again cooked
+            return UInt.cache_int(UIntType.LSHIFT, expr.width, (b, const_uint(k)))
+
 @collapse.rule(UIntType.LSHIFT)
 def coll_LSHIFT_const_fold(expr: UInt, a: UInt, b: UInt):
     if a.uint_type == b.uint_type == UIntType.CONST:
