@@ -25,6 +25,9 @@ class UIntType(IntEnum):
     # leaf nodes
     CONST = 1
     VAR = 2
+    
+    # constructed from other bits
+    BITS = auto()
 
     # operators
     ADD = auto()
@@ -384,16 +387,29 @@ def var_uint(name: str, width: int) -> UInt:
         bits=bits,
     )
 
-def uint(val: int | str, width: int | None = None) -> UInt:
+def bits_uint(bits: tuple[Bit, ...]) -> UInt:
+    """group a sequence of bits together into a UInt. LSB goes first"""
+
+    return UInt._create(
+        uint_type=UIntType.BITS,
+        width=len(bits),
+        bits=bits,
+    )
+
+def uint(val: int | str | tuple[Bit, ...], width: int | None = None) -> UInt:
     """
     general factory for UInts, delegate to const_uint or var_uint depending on the type of val
     """
     if isinstance(val, int):
         return const_uint(val, width)
-    else:
+    elif isinstance(val, str):
         if width is None:
             raise ValueError(f"uint({val}): variable UInts require a width")
         return var_uint(val, width)
+    elif isinstance(val, tuple):
+        return bits_uint(val)
+    else:
+        raise TypeError(f"type {type(val)} not supported for uint() cretaion")
 
 def print_ast(expr: ASTNode, prefix="", is_tail=True):
     connector = "└─" if is_tail else "├─"
