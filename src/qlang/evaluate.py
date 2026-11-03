@@ -188,11 +188,15 @@ def evaluate(
 ) -> int | bool: 
     if not node.operands:  # leaf node
         var_checker((node,), assignments)
+        if get_type(node) not in (BitType.CONST, BitType.VAR, UIntType.CONST, UIntType.VAR): 
+            raise ValueError("operator node must have operands")
         return get_values((node,), assignments)[0]
     else:                  # operators
         if isinstance(node, Bit): 
             type = node.bit_type
             if type == BitType.NOT: 
+                if len(node.operands) != 1: 
+                    raise ValueError("NOT must have exactly one operand")
                 b = node.operands[0]
                 if not isinstance(b, Bit): 
                     raise ValueError("NOT cannot be applied to a type other than Bit")
@@ -200,12 +204,16 @@ def evaluate(
                 if b.bit_type in (BitType.VAR, BitType.CONST): 
                     return not get_values((b,), assignments)[0]
                 return not evaluate(b, assignments)
+            if len(node.operands) != 2: 
+                raise ValueError("binary operations must have exactly two operands")
             if type in (BitType.XOR, BitType.AND, BitType.OR): 
                 return bitwise_only_op(node, assignments)
             if type in (BitType.EQ, BitType.NE, BitType.GT, BitType.LT, BitType.GE, BitType.LE): 
                 return comparison_op(node, assignments)
             raise ValueError("BitType not recognized")
         if isinstance(node, UInt): 
+            if len(node.operands) != 2: 
+                raise ValueError("binary operations must have exactly two operands")
             if node.uint_type not in (UIntType.ADD, UIntType.MUL, UIntType.LSHIFT, UIntType.RSHIFT): 
                 raise ValueError("UIntType not recognized")
             return int_only_op(node, assignments)

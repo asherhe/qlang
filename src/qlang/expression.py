@@ -294,8 +294,14 @@ def var_bit(name: str, index: int | None = None) -> Bit:
 
 def const_uint(value: int, width: int | None) -> UInt:
     """create a constant UInt of CONST Bits. if width is not given, infer the smallest width that fits val"""
+    if value < 0: 
+        raise ValueError("value must be non-negative")
     if width is None:
         width = max(1, value.bit_length())
+    if width <= 0: 
+        raise ValueError("specified width must be positive")
+    if value >= (1 << width): 
+        raise ValueError("value does not fit in specified width")
     
     bits = tuple(const_bit((value >> i) & 1) for i in range(width))
     return UInt(
@@ -306,6 +312,8 @@ def const_uint(value: int, width: int | None) -> UInt:
 
 def var_uint(name: str, width: int) -> UInt:
     """create a variable UInt"""
+    if width <= 0: 
+        raise ValueError("specified width must be positive")
     bits = tuple(var_bit(name, i) for i in range(width))
     return UInt(
         uint_type=UIntType.VAR,
