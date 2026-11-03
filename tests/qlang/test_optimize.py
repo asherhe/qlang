@@ -114,7 +114,6 @@ def test_arithmetic_rewrites_preserve_values(x, y, build):
         assert evaluate(result, {"x": a, "y": b}) == evaluate(expr, {"x": a, "y": b})
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason="x+x becomes a shift at x.width, dropping the addition carry bit")
 def test_add_self_preserves_carry(x):
     result = optimize_expr(x + x)
     assert evaluate(result, {"x": 7}) == 14

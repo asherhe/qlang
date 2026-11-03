@@ -342,8 +342,7 @@ def coll_ADD_const_identity(expr: UInt, a: UInt, b: UInt):
 @collapse.rule(UIntType.ADD)
 def coll_ADD_self(expr: UInt, a: UInt, b: UInt):
     if a is b:
-        # TODO: uint width of this is cooked, carry bit is lost
-        return a << 1
+        return UInt._create(uint_type=UIntType.LSHIFT, width=a.width+1, operands=(a, const_uint(1, 1)))
 
 # (x + c1) + c2  ->  x + (c1 + c2)
 coll_ADD_const_reassoc = collapse.rule(UIntType.ADD)(_const_reassoc(UIntType.ADD, add))
