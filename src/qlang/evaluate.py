@@ -3,7 +3,7 @@ from typing import cast
 from .expression import ASTNode, Bit, BitType, UInt, UIntType
 
 
-def get_type(node: ASTNode): 
+def _get_type(node: ASTNode): 
     if isinstance(node, Bit): 
         return node.bit_type
     if isinstance(node, UInt): 
@@ -11,12 +11,12 @@ def get_type(node: ASTNode):
     return NotImplemented
 
 # assumes that types not CONST or VAR are valid to recurse through
-def var_checker(
+def _var_checker(
     nodes: tuple[ASTNode, ...],
     assignments: dict[str, int | bool],
 ) -> None: 
     for node in nodes: 
-        type = get_type(node)
+        type = _get_type(node)
         if type in (BitType.VAR, UIntType.VAR): 
             if node.name not in assignments: 
                 raise ValueError(f"variable '{node.name}' is not assigned")
@@ -45,13 +45,13 @@ def var_checker(
                 raise ValueError("const Bit as part of const UInt has missing value")
 
 # prereq: assignments are available for VARs 
-def get_values(
+def _get_values(
     nodes: tuple[ASTNode, ...], 
     assignments: dict[str, int | bool],
 ) -> tuple[int | bool, ...]: 
     values = ()
     for node in nodes: 
-        type = get_type(node)
+        type = _get_type(node)
         if isinstance(node, Bit):       # not actually that necessary but for intellisense polymorphism
             if type == BitType.VAR:
                 value = assignments[cast(str, node.name)]
@@ -76,9 +76,10 @@ def get_values(
     return values
 
 # XOR, AND, OR
-def bitwise_only_op(
+def _bitwise_only_op(
     node: ASTNode, 
     assignments: dict[str, int | bool],
+    memo: dict[int, int | bool],
 ): 
     if not isinstance(node, Bit): 
         raise ValueError("this op cannot be applied to a type other than Bit")
@@ -95,15 +96,15 @@ def bitwise_only_op(
     b1, b2 = node.operands[0], node.operands[1]   # not node.operands[:2] because intellisense can't do polymorphism
     if not isinstance(b1, Bit) or not isinstance(b2, Bit): 
         raise ValueError(f"{name} cannot be applied to a type other than Bit")
-    var_checker((b1, b2), assignments)
+    _var_checker((b1, b2), assignments)
     if b1.bit_type not in (BitType.VAR, BitType.CONST): 
-        b1v = evaluate(b1, assignments)
+        b1v = _evaluate(b1, assignments, memo)
     else: 
-        b1v = get_values((b1,), assignments)[0]
+        b1v = _get_values((b1,), assignments)[0]
     if b2.bit_type not in (BitType.VAR, BitType.CONST): 
-        b2v = evaluate(b2, assignments)
+        b2v = _evaluate(b2, assignments, memo)
     else: 
-        b2v = get_values((b2,), assignments)[0]
+        b2v = _get_values((b2,), assignments)[0]
     match type: 
         case BitType.XOR: 
             return b1v ^ b2v
@@ -113,23 +114,24 @@ def bitwise_only_op(
             return b1v | b2v
 
 # EQ, NE, GT, LE, GE, LE
-def comparison_op(
+def _comparison_op(
     node: ASTNode, 
     assignments: dict[str, int | bool],
+    memo: dict[int, int | bool],
 ): 
     if not isinstance(node, Bit): 
         raise ValueError("this op cannot be applied to a type other than Bit")
     type = node.bit_type
     u1, u2 = node.operands[0], node.operands[1]
-    var_checker((u1, u2), assignments)
-    if get_type(u1) not in (BitType.VAR, BitType.CONST, UIntType.VAR, UIntType.CONST):
-        u1v = evaluate(u1, assignments)
+    _var_checker((u1, u2), assignments)
+    if _get_type(u1) not in (BitType.VAR, BitType.CONST, UIntType.VAR, UIntType.CONST):
+        u1v = _evaluate(u1, assignments, memo)
     else: 
-        u1v = get_values((u1,), assignments)[0]
-    if get_type(u2) not in (BitType.VAR, BitType.CONST, UIntType.VAR, UIntType.CONST): 
-        u2v = evaluate(u2, assignments)
+        u1v = _get_values((u1,), assignments)[0]
+    if _get_type(u2) not in (BitType.VAR, BitType.CONST, UIntType.VAR, UIntType.CONST): 
+        u2v = _evaluate(u2, assignments, memo)
     else: 
-        u2v = get_values((u2,), assignments)[0]
+        u2v = _get_values((u2,), assignments)[0]
     match type: 
         case BitType.EQ: 
             return u1v == u2v
@@ -147,9 +149,10 @@ def comparison_op(
             return NotImplemented
 
 # ADD, MUL, LSHIFT, RSHIFT
-def int_only_op(
+def _int_only_op(
     node: ASTNode, 
     assignments: dict[str, int | bool],
+    memo: dict[int, int | bool],
 ): 
     if not isinstance(node, UInt): 
         raise ValueError("this op cannot be applied to a type other than UInt")
@@ -168,15 +171,15 @@ def int_only_op(
     u1, u2 = node.operands[0], node.operands[1]
     if not isinstance(u1, UInt) or not isinstance(u2, UInt): 
         raise ValueError(f"{name} cannot be applied to a type other than UInt")
-    var_checker((u1, u2), assignments)
-    if get_type(u1) not in (UIntType.VAR, UIntType.CONST):
-        u1v = evaluate(u1, assignments)
+    _var_checker((u1, u2), assignments)
+    if _get_type(u1) not in (UIntType.VAR, UIntType.CONST):
+        u1v = _evaluate(u1, assignments, memo)
     else: 
-        u1v = get_values((u1,), assignments)[0]
-    if get_type(u2) not in (UIntType.VAR, UIntType.CONST): 
-        u2v = evaluate(u2, assignments)
+        u1v = _get_values((u1,), assignments)[0]
+    if _get_type(u2) not in (UIntType.VAR, UIntType.CONST): 
+        u2v = _evaluate(u2, assignments, memo)
     else: 
-        u2v = get_values((u2,), assignments)[0]
+        u2v = _get_values((u2,), assignments)[0]
     match type: 
         case UIntType.ADD: 
             return u1v + u2v
@@ -187,15 +190,16 @@ def int_only_op(
         case UIntType.RSHIFT: 
             return u1v >> u2v
 
-def evaluate(
+def _evaluate_uncached(
     node: ASTNode, 
     assignments: dict[str, int | bool],
+    memo: dict[int, int | bool],
 ) -> int | bool: 
     if not node.operands:  # leaf node
-        var_checker((node,), assignments)
-        if get_type(node) not in (BitType.CONST, BitType.VAR, UIntType.CONST, UIntType.VAR): 
+        _var_checker((node,), assignments)
+        if _get_type(node) not in (BitType.CONST, BitType.VAR, UIntType.CONST, UIntType.VAR): 
             raise ValueError("operator node must have operands")
-        return get_values((node,), assignments)[0]
+        return _get_values((node,), assignments)[0]
     else:                  # operators
         if isinstance(node, Bit): 
             type = node.bit_type
@@ -205,21 +209,34 @@ def evaluate(
                 b = node.operands[0]
                 if not isinstance(b, Bit): 
                     raise ValueError("NOT cannot be applied to a type other than Bit")
-                var_checker((b,), assignments)
+                _var_checker((b,), assignments)
                 if b.bit_type in (BitType.VAR, BitType.CONST): 
-                    return not get_values((b,), assignments)[0]
-                return not evaluate(b, assignments)
+                    return not _get_values((b,), assignments)[0]
+                return not _evaluate_uncached(b, assignments, memo)
             if len(node.operands) != 2: 
                 raise ValueError("binary operations must have exactly two operands")
             if type in (BitType.XOR, BitType.AND, BitType.OR): 
-                return bitwise_only_op(node, assignments)
+                return _bitwise_only_op(node, assignments, memo)
             if type in (BitType.EQ, BitType.NE, BitType.GT, BitType.LT, BitType.GE, BitType.LE): 
-                return comparison_op(node, assignments)
+                return _comparison_op(node, assignments, memo)
             raise ValueError("BitType not recognized")
         if isinstance(node, UInt): 
             if len(node.operands) != 2: 
                 raise ValueError("binary operations must have exactly two operands")
             if node.uint_type not in (UIntType.ADD, UIntType.MUL, UIntType.LSHIFT, UIntType.RSHIFT): 
                 raise ValueError("UIntType not recognized")
-            return int_only_op(node, assignments)
+            return _int_only_op(node, assignments, memo)
         raise ValueError("ASTNode not recognized")
+
+# helper that manages caching
+def _evaluate(node, assignments, memo): 
+    key = id(node)
+    if key in memo: 
+        return memo[key]
+    memo[key] = _evaluate_uncached(node, assignments, memo)
+    return memo[key]
+
+# the public interface
+def evaluate(node, assignments): 
+    memo = {}
+    return _evaluate(node, assignments, memo)
