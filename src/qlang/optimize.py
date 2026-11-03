@@ -177,14 +177,24 @@ def coll_LT_const_fold(expr: Bit, a: UInt, b: UInt):
 
 @collapse.rule(BitType.LT)
 def coll_LT_const_bounds(expr: Bit, a: UInt, b: UInt):
-    """comparison against a constant that is out of range of the other operand"""
+    """
+    comparison against a constant that is out of range of the other operand
+    a < b  ->  0       if a >= max b size
+    0 < b  ->  b != 0  cheaper than a comparison
+    a < 0  ->  0
+    a < b  ->  1       if a > max b size
+    """
+    if a.uint_type == UIntType.CONST:
+        aval = a.const_value
+        if aval >= (1 << b.width) - 1:
+            return const_bit(False)
+        if aval == 0:
+            return b != 0
     if b.uint_type == UIntType.CONST:
         bval = b.const_value
         if bval == 0:
-            # a < 0  ->  0
             return const_bit(False)
         if bval >= (1 << a.width):
-            # a < (anything above the max of a)  ->  1
             return const_bit(True)
 
 @collapse.rule(BitType.GT)
