@@ -12,6 +12,6 @@ from .expression import (
     const_uint,
     var_uint,
     uint,
-    optimize_expr,
 )
+from .optimize import optimize_expr
 from .qalgorithm import search
