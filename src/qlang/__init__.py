@@ -4,6 +4,7 @@ from .compile import (
     compile_oracle,
 )
 from .expression import (
+    ASTNode,
     Bit,
     UInt,
     const_bit,

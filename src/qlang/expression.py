@@ -41,6 +41,12 @@ class ASTNode:
     # stores ASTNodes for fast lookup
     cache: dict[tuple[Any, ...], ASTNode] = {}
 
+    # whether this ASTNode has no children
+    @property
+    def is_leaf(self) -> bool:
+        return len(self.operands) == 0
+
+
 class Bit(ASTNode):
     """
     a Bit is a node in an expression tree. it can be evaluated to some value, depending on its bit_type:
@@ -61,7 +67,7 @@ class Bit(ASTNode):
         self, 
         *, 
         bit_type: BitType,
-        name: str | None = None, 
+        name: str | None = None,
         index: int | None = None,
         value: bool | None = None, 
         operands: tuple[ASTNode, ...] = (),
