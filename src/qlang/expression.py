@@ -181,6 +181,13 @@ class UInt(ASTNode):
         self.bits = bits
         self.operands = operands
 
+    @property
+    def const_value(self) -> int:
+        """the internal value held by the bits of a CONST UInt, as an int"""
+        if self.uint_type != UIntType.CONST:
+            raise ValueError("must be a constant UInt to convert to int")
+        return sum((1 if bit.value else 0) << i for i, bit in enumerate(self.bits))
+
     @staticmethod
     def as_uint(val): 
         if isinstance(val, UInt): 
@@ -326,6 +333,27 @@ def decompose_ops(expr: ASTNode) -> ASTNode:
     """
     decompose operations that cannot be directly built with quantum gates into primitive operators
     """
+    if expr.is_leaf:
+        return expr
+
+    if isinstance(expr, Bit):
+        bit_args = cast(tuple[Bit, ...], expr.operands)
+        uint_args = cast(tuple[UInt, ...], expr.operands)
+        if expr.bit_type == BitType.OR:
+            # decompose into AND, NOT by de morgan's laws
+
+            # assuming only binary OR operation
+            # maybe we will do n-ary OR eventually but not now
+            expr = ~(~bit_args[0] & ~bit_args[1])
+        if expr.bit_type == BitType.EQ:
+            # != is simpler to implement in gates
+            expr = ~(uint_args[0] != uint_args[1])
+            
+    elif isinstance(expr, UInt):
+        pass
+    
+    expr.operands = tuple(map(decompose_ops, expr.operands))
+    
     return expr
 
 def optimize_expr(expr: ASTNode) -> ASTNode:

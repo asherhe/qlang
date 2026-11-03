@@ -6,12 +6,11 @@ def print_ast(expr: ASTNode, prefix="", is_tail=True):
 
     text = ""
     if isinstance(expr, Bit):
-        bit: Bit = expr
-        if bit.bit_type == BitType.CONST:
-            text = f"Bit {1 if bit.value else 0}"
-        elif bit.bit_type == BitType.VAR:
-            idx_str = f"[{bit.index}]" if bit.index else ""
-            text = f"Bit {bit.name}{idx_str}"
+        if expr.bit_type == BitType.CONST:
+            text = f"Bit {1 if expr.value else 0}"
+        elif expr.bit_type == BitType.VAR:
+            idx_str = f"[{expr.index}]" if expr.index else ""
+            text = f"Bit {expr.name}{idx_str}"
         else:
             BIT_OPS = {
                 BitType.NOT: "~",
@@ -25,14 +24,12 @@ def print_ast(expr: ASTNode, prefix="", is_tail=True):
                 BitType.GE: ">=",
                 BitType.LE: "<=",
             }
-            text = f"Bit op{BIT_OPS[bit.bit_type]}"
+            text = f"Bit op{BIT_OPS[expr.bit_type]}"
     elif isinstance(expr, UInt):
-        uint: UInt = expr
-        if uint.uint_type == UIntType.CONST:
-            value = sum((1 if bit.value else 0) << i for i, bit in enumerate(uint.bits))
-            text = f"UInt {value}"
-        elif uint.uint_type == UIntType.VAR:
-            text = f"UInt {uint.name}"
+        if expr.uint_type == UIntType.CONST:
+            text = f"UInt {expr.const_value}"
+        elif expr.uint_type == UIntType.VAR:
+            text = f"UInt {expr.name}"
         else:
             UINT_OPS = {
                 UIntType.ADD: "+",
@@ -40,8 +37,8 @@ def print_ast(expr: ASTNode, prefix="", is_tail=True):
                 UIntType.LSHIFT: "<<",
                 UIntType.RSHIFT: ">>",
             }
-            text = f"UInt op{UINT_OPS[uint.uint_type]}"
-        text = f"{text} ({uint.width}-bit)"
+            text = f"UInt op{UINT_OPS[expr.uint_type]}"
+        text = f"{text} ({expr.width}-bit)"
 
     print(f"{prefix}{connector}{text}")
 
