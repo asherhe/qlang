@@ -93,13 +93,15 @@ class Bit(ASTNode):
     @staticmethod
     def _operator(type: BitType, **kwargs): 
         left = Bit.as_bit(kwargs['self'])
+        if left is NotImplemented: 
+            return NotImplemented
         if 'other' not in kwargs: 
             return Bit._cache_bit(type, (left,))
+        
         right = Bit.as_bit(kwargs['other'])
-        if isinstance(right, (bool, int)): 
-            right = const_bit(right)
-        if not isinstance(right, Bit): 
+        if right is NotImplemented: 
             return NotImplemented
+        
         return Bit._cache_bit(type, (left, right))
     
     def __and__(self, other): 
@@ -193,13 +195,15 @@ class UInt(ASTNode):
     @staticmethod
     def _operator(type: UIntType, **kwargs): 
         left = UInt.as_uint(kwargs['self'])
+        if left is NotImplemented: 
+            return NotImplemented
         if 'other' not in kwargs: 
             return UInt._cache_int(type, left.width, (left,))
+        
         right = UInt.as_uint(kwargs['other'])
-        if isinstance(right, (bool, int)): 
-            right = UInt.as_uint(right)
-        if not isinstance(right, UInt): 
+        if right is NotImplemented: 
             return NotImplemented
+        
         if type == UIntType.ADD: 
             width = max(left.width, right.width) + 1
         elif type == UIntType.MUL: 
@@ -208,6 +212,7 @@ class UInt(ASTNode):
             width = left.width                                 # this assumes fixed-width behavior for now
         else: 
             raise ValueError(f"unsupported UInt operation: {type}")
+        
         return UInt._cache_int(type, width, (left, right))
 
     def __add__(self, other):
