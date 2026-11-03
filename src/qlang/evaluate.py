@@ -21,9 +21,9 @@ def var_checker(
             if node.name not in assignments: 
                 raise ValueError(f"variable '{node.name}' is not assigned")
             value = assignments[node.name]
-            if type == BitType.VAR: 
-                assignments[node.name] = value != 0
-            elif isinstance(node, UInt): 
+            if isinstance(node, UInt): 
+                if not isinstance(value, (int, bool)): 
+                    raise ValueError(f"assignment value '{node.name}' must be an integer")
                 if value < 0: 
                     raise ValueError(f"assignment value '{node.name}' must be non-negative")
                 elif value >= (1 << node.width): 
@@ -49,7 +49,12 @@ def get_values(
         type = get_type(node)
         if isinstance(node, Bit):       # not actually that necessary but for intellisense polymorphism
             if type == BitType.VAR:
-                values += (assignments[cast(str, node.name)],)
+                value = assignments[cast(str, node.name)]
+                if node.index is not None: 
+                    value = bool((value >> node.index) & 1)
+                else: 
+                    value = bool(value)
+                values += (value,)
             elif type == BitType.CONST: 
                 values += (cast(bool, node.value),)
             else: 
@@ -173,7 +178,7 @@ def int_only_op(
         case UIntType.MUL: 
             return u1v * u2v
         case UIntType.LSHIFT: 
-            return u1v << u2v
+            return (u1v << u2v) & ((1 << node.width) - 1)  # assumes fixed width for uint
         case UIntType.RSHIFT: 
             return u1v >> u2v
 
@@ -199,9 +204,9 @@ def evaluate(
                 return bitwise_only_op(node, assignments)
             if type in (BitType.EQ, BitType.NE, BitType.GT, BitType.LT, BitType.GE, BitType.LE): 
                 return comparison_op(node, assignments)
-            return NotImplemented
+            raise ValueError("BitType not recognized")
         if isinstance(node, UInt): 
             if node.uint_type not in (UIntType.ADD, UIntType.MUL, UIntType.LSHIFT, UIntType.RSHIFT): 
-                return NotImplemented
+                raise ValueError("UIntType not recognized")
             return int_only_op(node, assignments)
-        return NotImplemented
+        raise ValueError("ASTNode not recognized")
