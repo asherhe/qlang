@@ -1,16 +1,16 @@
 # qlang unit tests
 
-Tests are grouped by source module. Run from the repository root with the
-project environment (after installing the project dependencies):
+Tests are grouped by source module. `pytest` is a project dependency declared in
+`pyproject.toml`, so it is installed with the project environment — no separate
+requirements file. Run from the repository root:
 
 ```powershell
-uv pip install --python .venv/Scripts/python.exe -r src/qlang/tests/requirements.txt
-.venv/Scripts/python.exe -B -m pytest src/qlang/tests
+uv run pytest
 ```
 
-From `src/qlang`, use `python -B -m pytest tests` with the project environment
-activated. The test-local `pytest.ini` limits discovery to this suite, enables
-expected-failure summaries, and makes unexpected passes fail the run.
+The pytest configuration lives in `pyproject.toml` (`[tool.pytest.ini_options]`):
+it limits discovery to this suite, enables expected-failure summaries, and makes
+unexpected passes fail the run via `xfail_strict = true`.
 
 ## Coverage
 
