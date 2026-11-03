@@ -73,22 +73,26 @@ class Bit(ASTNode):
         self.operands = operands
 
     @staticmethod
-    def _operator(type: BitType, **kwargs): 
-        key = (type, kwargs)
+    def _cache_bit(type: BitType, operands: tuple[ASTNode, ...]): 
+        key = (Bit, type, tuple(id(node) for node in operands))
         if key not in ASTNode.cache: 
-            if 'other' in kwargs: 
-                if isinstance(kwargs['other'], bool):
-                    kwargs['other'] = const_bit(kwargs['other'])
-                ASTNode.cache[key] = Bit(
-                    bit_type=type, 
-                    operands=(kwargs['self'], kwargs['other'])
-                )
-            else: 
-                ASTNode.cache[key] = Bit(
-                    bit_type=type, 
-                    operands=(kwargs['self'])
-                )
+            ASTNode.cache[key] = Bit(
+                bit_type=type, 
+                operands=operands,
+            )
         return ASTNode.cache[key]
+
+    @staticmethod
+    def _operator(type: BitType, **kwargs): 
+        left = kwargs['self']
+        if 'other' not in kwargs: 
+            return Bit._cache_bit(type, (left,))
+        right = kwargs['other']
+        if isinstance(right, (bool, int)): 
+            right = const_bit(right)
+        if not isinstance(right, Bit): 
+            return NotImplemented
+        return Bit._cache_bit(type, (left, right))
     
     def __and__(self, other): 
         return Bit._operator(BitType.AND, self=self, other=other)
@@ -160,25 +164,29 @@ class UInt(ASTNode):
         self.operands = operands
 
     @staticmethod
-    def _operator(type: UIntType, **kwargs): 
-        key = (type, kwargs)
+    def _cache_int(type: UIntType, width: int, operands): 
+        key = (UIntType, type, tuple(id(node) for node in operands))
         if key not in ASTNode.cache: 
-            if 'other' in kwargs: 
-                if isinstance(kwargs['other'], int):
-                    kwargs['other'] = const_uint(kwargs['other'], width=None)
-                ASTNode.cache[key] = UInt(
-                    uint_type=type, 
-                    width=kwargs['width'],
-                    operands=(kwargs['self'], kwargs['other']),
-                )
-            else: 
-                ASTNode.cache[key] = UInt(
-                    uint_type=type, 
-                    width=kwargs['width'],
-                    operands=(kwargs['self']),
-                )
+            ASTNode.cache[key] = UInt(
+                uint_type=type,
+                width=width, 
+                operands=operands,
+            )
         return ASTNode.cache[key]
-    
+
+    @staticmethod
+    def _operator(type: UIntType, **kwargs): 
+        width = kwargs['width']
+        left = kwargs['self']
+        if 'other' not in kwargs: 
+            return UInt._cache_int(type, width, (left,))
+        right = kwargs['other']
+        if isinstance(right, (bool, int)): 
+            right = const_uint(right, width)
+        if not isinstance(right, UInt): 
+            return NotImplemented
+        return UInt._cache_int(type, width, (left, right))
+
     def __add__(self, other):
         return UInt._operator(UIntType.ADD, self=self, other=other)
 
