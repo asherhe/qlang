@@ -4,7 +4,8 @@ from collections.abc import Iterable
 
 from .compile import Oracle, compile_oracle, OutputMode
 
-from qiskit import QuantumCircuit
+from qiskit_aer import AerSimulator
+from qiskit import QuantumCircuit, ClassicalRegister, transpile
 
 def _phase_oracle(
     oracle: Oracle 
@@ -57,9 +58,17 @@ def _grover_circuit(
     oracle: Oracle, 
     k: int
 ) -> tuple[QuantumCircuit, list[int]]:
+    """
+    contruct the circuit by looping k times and glue phase oracle and diffuser gates
+    to the circuit each loop
+    """
     if k < 0:
         raise ValueError("k must be non-negative")
-    
+
+    """
+    inputs: apply gates and measurements to all input qubits.
+    oracle.inputs: identify which measured bits belong to x and which belong to y.
+    """
     inputs = oracle.inputs
 
     inputs = [
@@ -85,10 +94,17 @@ def _grover_circuit(
 
     return qc, inputs
 
+def evaluate_predicate(
+    pred: Bit, 
+    assignment: dict
+):
+    ...
+
 
 def search(
     params: dict[str, Iterable[int]],
     pred: Bit, # expression tree for the condition
+    k: int = 1
 ) -> list[dict[str, int]]:
     """
     search for solutions in the space of params that satisfy pred
@@ -97,6 +113,63 @@ def search(
 
     return a list of all solution sets that satisfy the predicate
     """
+    allowed = {
+        name: set(values)
+        for name, values in params.items()
+    }
+
     oracle = compile_oracle(pred)
-    ...
+
+    circuit, inputs = _grover_circuit(oracle, k=k)
+
+    measured = ClassicalRegister(len(inputs), "measured")
+    circuit.add_register(measured)
+
+    for index, qubit in enumerate(inputs):
+        circuit.measure(qubit, measured[index])
+
+    simulator = AerSimulator()
+    execuble = transpile(circuit, simulator)
+    result = simulator.run(execuble, shots=1024).result()
+    counts = result.get_counts()
+    
+    assignments = []
+
+    #flaw: count is not used
+
+    for bitstring in counts:
+        bits = bitstring[::-1]
+
+        measured_by_qubit = {}
+
+        for position, qubit in enumerate(inputs):
+            measured_by_qubit[qubit] = int(bits[position])
+
+        assignment = {}
+
+        for name, qubits in oracle.inputs.items():
+            value = 0
+
+            for bit_index, qubit in enumerate(qubits):
+                bit = measured_by_qubit[qubit]
+                value += bit * (2 ** bit_index)
+
+            assignment[name] = value
+
+        valid = True
+
+        for name, value in assignment.items():
+            if value not in allowed[name]:
+                valid = False
+                break
+
+        if not valid:
+            continue
+
+        if not evaluate_predicate(pred, assignment):
+            continue
+
+        assignments.append(assignment)
+
+    return assignments
 
