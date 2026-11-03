@@ -262,13 +262,13 @@ class UInt(ASTNode):
         return UInt._operator(UIntType.LSHIFT, self=self, other=other)
 
     def __rlshift__(self, other): 
-        return self.__lshift__(other)
+        return UInt._operator(UIntType.LSHIFT, self=other, other=self)
 
     def __rshift__(self, other): 
         return UInt._operator(UIntType.RSHIFT, self=self, other=other)
 
     def __rrshift__(self, other): 
-        return self.__rshift__(other)
+        return UInt._operator(UIntType.RSHIFT, self=other, other=self)
 
 # -------- factory functions --------
 
