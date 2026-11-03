@@ -5,6 +5,7 @@ description = "compile expressions into quantum circuits!"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
+    "pytest>=9.2.0",
     "qiskit-aer>=0.17",
     "qiskit-ibm-runtime>=0.40",
     "qiskit[visualization]>=2.0",
@@ -21,4 +22,9 @@ include = ["src"]
 executionEnvironments = [
   { root = "src" }
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/qlang"]
+addopts = "-ra"
+xfail_strict = true
 
