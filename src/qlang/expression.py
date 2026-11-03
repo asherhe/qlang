@@ -295,12 +295,8 @@ def var_bit(name: str, index: int | None = None) -> Bit:
 def const_uint(value: int, width: int | None) -> UInt:
     """create a constant UInt of CONST Bits. if width is not given, infer the smallest width that fits val"""
     if width is None:
-        v = value
-        width = 1
-        while v > 1:
-            width += 1
-            v >>= 1
-
+        width = max(1, value.bit_length())
+    
     bits = tuple(const_bit((value >> i) & 1) for i in range(width))
     return UInt(
         uint_type=UIntType.CONST,
