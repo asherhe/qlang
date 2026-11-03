@@ -140,11 +140,11 @@ class Bit(ASTNode):
     def _operator(bit_type: BitType, **kwargs) -> Bit:
         left = Bit.as_bit(kwargs['self'])
         if 'other' not in kwargs: 
-            return Bit.cache_bit(bit_type, (left,))
+            return Bit._create(bit_type=bit_type, operands=(left,))
         
         right = Bit.as_bit(kwargs['other'])
         
-        return Bit.cache_bit(bit_type, (left, right))
+        return Bit._create(bit_type=bit_type, operands=(left, right))
     
     def __and__(self, other): 
         return Bit._operator(BitType.AND, self=self, other=other)
@@ -254,7 +254,7 @@ class UInt(ASTNode):
     def _operator(uint_type: UIntType, **kwargs): 
         left = UInt.as_uint(kwargs['self'])
         if 'other' not in kwargs: 
-            return UInt.cache_int(uint_type, left.width, (left,))
+            return UInt._create(uint_type=uint_type, width=left.width, operands=(left,))
         
         right = UInt.as_uint(kwargs['other'])
         
@@ -269,11 +269,11 @@ class UInt(ASTNode):
         else: 
             raise ValueError(f"unsupported UInt operation: {uint_type}")
         
-        return UInt.cache_int(uint_type, width, (left, right))
+        return UInt._create(uint_type=uint_type, width=width, operands=(left, right))
 
     def _compare(self, bit_type: BitType, other) -> Bit:
         right = UInt.as_uint(other)
-        return Bit.cache_bit(bit_type, (self, right))
+        return Bit._create(bit_type=bit_type, operands=(self, right))
 
     # python really isn't happy about overriding __eq__ to return a non-bool
     def __eq__(self, other) -> Bit:  # type: ignore[override]
