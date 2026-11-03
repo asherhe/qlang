@@ -41,6 +41,13 @@ class ASTNode:
     # stores ASTNodes for fast lookup
     cache: dict[tuple[Any, ...], ASTNode] = {}
 
+    def __bool__(self): 
+        raise TypeError(
+            "AST nodes cannot be used as Python booleans. "
+            "Use bitwise operators to build expressions "
+            "or evaluate the expression explicitly"
+        )
+
 class Bit(ASTNode):
     """
     a Bit is a node in an expression tree. it can be evaluated to some value, depending on its bit_type:
