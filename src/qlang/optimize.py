@@ -314,15 +314,50 @@ def coll_MUL_const_fold(expr: UInt, a: UInt, b: UInt):
     if a.uint_type == b.uint_type == UIntType.CONST:
         return const_uint(a.const_value * b.const_value)
 
+@collapse.rule(UIntType.MUL)
+def coll_MUL_const_identity(expr: UInt, a: UInt, b: UInt):
+    """
+    0 * b  ->  0
+    1 * b  ->  b
+    """
+    a, b = _sorted_uints(a, b)
+    if a.uint_type == UIntType.CONST:
+        if a.const_value == 0:
+            return const_uint(0, expr.width)
+        if a.const_value == 1:
+            return b
+
 @collapse.rule(UIntType.LSHIFT)
 def coll_LSHIFT_const_fold(expr: UInt, a: UInt, b: UInt):
     if a.uint_type == b.uint_type == UIntType.CONST:
         return const_uint(a.const_value << b.const_value, a.width)
 
+@collapse.rule(UIntType.LSHIFT)
+def coll_LSHIFT_const_identity(expr: UInt, a: UInt, b: UInt):
+    """
+    a << 0  ->  a
+    0 << b  ->  0
+    """
+    if b.uint_type == UIntType.CONST and b.const_value == 0:
+        return a
+    if a.uint_type == UIntType.CONST and a.const_value == 0:
+        return const_uint(0, expr.width)
+
 @collapse.rule(UIntType.RSHIFT)
 def coll_RSHIFT_const_fold(expr: UInt, a: UInt, b: UInt):
     if a.uint_type == b.uint_type == UIntType.CONST:
         return const_uint(a.const_value >> b.const_value)
+
+@collapse.rule(UIntType.RSHIFT)
+def coll_RSHIFT_const_identity(expr: UInt, a: UInt, b: UInt):
+    """
+    a >> 0  ->  a
+    0 >> b  ->  0
+    """
+    if b.uint_type == UIntType.CONST and b.const_value == 0:
+        return a
+    if a.uint_type == UIntType.CONST and a.const_value == 0:
+        return const_uint(0, expr.width)
 
 
 def optimize_expr(expr: ASTNode) -> ASTNode:
