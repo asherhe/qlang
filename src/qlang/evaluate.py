@@ -84,6 +84,24 @@ def evaluate(
                         return evaluate(b1, assignments) ^ evaluate(b2, assignments)
                     b1v, b2v = get_values((b1, b2), assignments)
                     return b1v ^ b2v
+                case BitType.AND: 
+                    if not isinstance(node.operands[0], Bit) or not isinstance(node.operands[1], Bit): 
+                        raise ValueError("AND cannot be applied to a type other than Bit")
+                    b1, b2 = node.operands[0], node.operands[1]
+                    var_checker((b1, b2), assignments)
+                    if b1.bit_type not in (BitType.VAR, BitType.CONST) or b2.bit_type not in (BitType.VAR, BitType.CONST): 
+                        return evaluate(b1, assignments) & evaluate(b2, assignments)
+                    b1v, b2v = get_values((b1, b2), assignments)
+                    return b1v & b2v
+                case BitType.OR: 
+                    if not isinstance(node.operands[0], Bit) or not isinstance(node.operands[1], Bit): 
+                        raise ValueError("OR cannot be applied to a type other than Bit")
+                    b1, b2 = node.operands[0], node.operands[1]
+                    var_checker((b1, b2), assignments)
+                    if b1.bit_type not in (BitType.VAR, BitType.CONST) or b2.bit_type not in (BitType.VAR, BitType.CONST): 
+                        return evaluate(b1, assignments) | evaluate(b2, assignments)
+                    b1v, b2v = get_values((b1, b2), assignments)
+                    return b1v | b2v
                 case _: 
                     return NotImplemented
         if isinstance(node, UInt): 
