@@ -10,6 +10,7 @@ def get_type(node: ASTNode):
         return node.uint_type
     return NotImplemented
 
+# assumes that types not CONST or VAR are valid to recurse through
 def var_checker(
     nodes: tuple[ASTNode, ...],
     assignments: dict[str, int | bool],
@@ -24,12 +25,10 @@ def var_checker(
         elif isinstance(node, UInt) and node.uint_type == UIntType.CONST: 
             if not node.bits: 
                 raise ValueError("const UInt has missing bits")
-            if not all(b.bit_type == BitType.VAR for b in node.bits):
+            if not all(b.bit_type == BitType.CONST for b in node.bits):
                 raise ValueError("const UInt cannot contain var Bit")
-            if not all(isinstance(b.value, Bit) for b in node.bits): 
+            if not all(isinstance(b.value, bool) for b in node.bits): 
                 raise ValueError("const Bit as part of const UInt has missing value")
-        else: 
-            raise NotImplementedError("node type not implemented yet")
 
 # prereq: assignments are available for VARs 
 def get_values(
