@@ -1,11 +1,39 @@
 from .expression import ASTNode, BitType, UIntType, Bit, UInt, const_bit
+from collections import defaultdict
 from operator import attrgetter
 from typing import Callable, cast
 
+# ASTNode -> ASTNode transformation
+NodeTransform = Callable[[ASTNode], ASTNode]
+# some node type
+NodeType = BitType | UIntType
+# a rule receives the node and its operands unpacked, and returns a replacement or None if it does not apply
+RuleFn = Callable[..., ASTNode | None]
 
-# -------- expression optimization --------
+class RulePass:
+    """
+    a named group of rewrite rules, indexed by the node type they apply to
 
-Rule = Callable[[ASTNode], ASTNode]
+    register rules with the .rule() decorator. rules for a node type are tried in registration order
+    """
+    def __init__(self, name: str):
+        self.name = name
+        self.table: dict[NodeType, list[RuleFn]] = defaultdict(list)
+
+    def rule(self, *types: NodeType) -> Callable[[RuleFn], RuleFn]:
+        """register the decorated function as a rule for the given node types"""
+        def deco(fn: RuleFn) -> RuleFn:
+            for t in types:
+                self.table[t].append(fn)
+            return fn
+        return deco
+
+def node_type(expr: ASTNode) -> NodeType:
+    if isinstance(expr, Bit):
+        return expr.bit_type
+    elif isinstance(expr, UInt):
+        return expr.uint_type
+    raise TypeError("only ASTNodes of type Bit and UInt are supported")
 
 def rebuild(expr: ASTNode, operands: tuple[ASTNode, ...]) -> ASTNode:
     """reconstruct an expression with new operands"""
@@ -20,7 +48,7 @@ def rebuild(expr: ASTNode, operands: tuple[ASTNode, ...]) -> ASTNode:
 
 def traverse_transform(
     expr: ASTNode,
-    rule: Rule,
+    rule: NodeTransform,
     memo: dict[int, ASTNode] | None = None,
 ) -> ASTNode:
     """
@@ -41,156 +69,219 @@ def traverse_transform(
         memo[key] = rule(rebuild(expr, operands))
     return memo[key]
 
-def _decompose_ops(expr: ASTNode) -> ASTNode:
+def run_rule_pass(expr: ASTNode, rule_pass: RulePass) -> ASTNode:
+    """apply a rule pass to every node of the expression, bottom-up. the first rule that applies to a node wins"""
+    def apply_pass(node: ASTNode) -> ASTNode:
+        for rule in rule_pass.table[node_type(node)]:
+            res = rule(node, *node.operands)
+            if res is not None:
+                return res
+        return node
+    return traverse_transform(expr, apply_pass)
+
+
+# decompose operations that cannot be directly built with quantum gates into primitive operators
+decompose = RulePass("decompose")
+
+@decompose.rule(BitType.OR)
+def deco_OR(expr: Bit, a: Bit, b: Bit):
     """
-    decompose operations that cannot be directly built with quantum gates into primitive operators
+    decompose into AND, NOT by de morgan's laws
+
+    assuming only binary OR operation
+    maybe we will do n-ary OR eventually but not now
     """
-    bit_args = cast(tuple[Bit, ...], expr.operands)
-    uint_args = cast(tuple[UInt, ...], expr.operands)
+    return ~(~a & ~b)
 
-    if isinstance(expr, Bit):
-        if expr.bit_type == BitType.OR:
-            # decompose into AND, NOT by de morgan's laws
+@decompose.rule(BitType.EQ)
+def deco_EQ(expr: Bit, a: UInt, b: UInt):
+    """!= is simpler to implement in gates"""
+    return ~(a != b)
 
-            # assuming only binary OR operation
-            # maybe we will do n-ary OR eventually but not now
-            expr = ~(~bit_args[0] & ~bit_args[1])
-        elif expr.bit_type == BitType.EQ:
-            # != is simpler to implement in gates
-            expr = ~(uint_args[0] != uint_args[1])
-        # collapse all comparison operators to LT to keep compilation clean
-        elif expr.bit_type == BitType.GT:
-            expr = uint_args[1] < uint_args[0]
-        elif expr.bit_type == BitType.LE:
-            expr = ~(uint_args[1] < uint_args[0])
-        elif expr.bit_type == BitType.GE:
-            expr = ~(uint_args[0] < uint_args[1])
-            
-    elif isinstance(expr, UInt):
-        pass
+# collapse all comparison operators to LT to keep compilation clean
+@decompose.rule(BitType.GT)
+def deco_GT(expr: Bit, a: UInt, b: UInt):
+    return b < a
+@decompose.rule(BitType.LE)
+def deco_LE(expr: Bit, a: UInt, b: UInt):
+    return ~(b < a)
+@decompose.rule(BitType.GE)
+def deco_GE(expr: Bit, a: UInt, b: UInt):
+    return ~(a < b)
 
-    return expr
 
-def _collapse_identities(expr: ASTNode) -> ASTNode:
+# eliminate superfluous expression nodes that are no-ops or can be simplified
+collapse = RulePass("collapse")
+
+def _sorted_bits(a: Bit, b: Bit) -> tuple[Bit, Bit]:
+    """order the operands of a commutative operator by type, placing CONST and VAR at the front"""
+    first, second = sorted((a, b), key=attrgetter("bit_type"))
+    return first, second
+
+def _is_negation_pair(a: Bit, b: Bit) -> bool:
+    """whether one of a, b is the NOT of the other"""
+    return (a.bit_type == BitType.NOT and a.operands[0] is b
+            or b.bit_type == BitType.NOT and b.operands[0] is a)
+
+# ---- NOT ----
+
+@collapse.rule(BitType.NOT)
+def coll_NOT_const(expr: Bit, a: Bit):
+    """fixed values"""
+    if a.bit_type == BitType.CONST:
+        return const_bit(not a.value)
+
+@collapse.rule(BitType.NOT)
+def coll_NOT_NOT(expr: Bit, a: Bit):
+    """~~a  ->  a"""
+    if a.bit_type == BitType.NOT:
+        return a.operands[0]
+
+# ---- comparisons ----
+
+@collapse.rule(BitType.EQ)
+def coll_EQ(expr: Bit, a: UInt, b: UInt):
+    # skip - assume all EQ have been decomposed
+    pass
+
+@collapse.rule(BitType.NE)
+def coll_NE_self(expr: Bit, a: UInt, b: UInt):
+    """a != a  ->  false"""
+    if a is b:
+        return const_bit(False)
+
+@collapse.rule(BitType.LT)
+def coll_LT_self(expr: Bit, a: UInt, b: UInt):
+    """a < a  ->  0"""
+    if a is b:
+        return const_bit(False)
+
+@collapse.rule(BitType.LT)
+def coll_LT_const_fold(expr: Bit, a: UInt, b: UInt):
+    """direct evaluation of const"""
+    if a.uint_type == b.uint_type == UIntType.CONST:
+        return const_bit(a.const_value < b.const_value)
+
+@collapse.rule(BitType.LT)
+def coll_LT_const_bounds(expr: Bit, a: UInt, b: UInt):
+    """comparison against a constant that is out of range of the other operand"""
+    if b.uint_type == UIntType.CONST:
+        bval = b.const_value
+        if bval == 0:
+            # a < 0  ->  0
+            return const_bit(False)
+        if bval >= (1 << a.width):
+            # a < (anything above the max of a)  ->  1
+            return const_bit(True)
+
+@collapse.rule(BitType.GT)
+def coll_GT(expr: Bit, a: UInt, b: UInt):
+    # skip - assume all GT have been decomposed
+    pass
+
+@collapse.rule(BitType.LE)
+def coll_LE(expr: Bit, a: UInt, b: UInt):
+    # skip - assume all LE have been decomposed
+    pass
+
+@collapse.rule(BitType.GE)
+def coll_GE(expr: Bit, a: UInt, b: UInt):
+    # skip - assume all GE have been decomposed
+    pass
+
+# ---- commutative (Bit, Bit) -> Bit operators ----
+
+@collapse.rule(BitType.XOR)
+def coll_XOR_const_fold(expr: Bit, a: Bit, b: Bit):
+    """direct evaluation of const"""
+    a, b = _sorted_bits(a, b)
+    if a.bit_type == b.bit_type == BitType.CONST:
+        return const_bit(cast(bool, a.value) ^ cast(bool, b.value))
+
+@collapse.rule(BitType.XOR)
+def coll_XOR_const_identity(expr: Bit, a: Bit, b: Bit):
     """
-    eliminate superfluous expression nodes that are no-ops or can be simplified
+    0 ^ b  ->  b
+    1 ^ b  ->  ~b
     """
-    bit_args = cast(tuple[Bit, ...], expr.operands)
-    uint_args = cast(tuple[UInt, ...], expr.operands)
+    a, b = _sorted_bits(a, b)
+    if a.bit_type == BitType.CONST:
+        return ~b if a.value else b
 
-    if isinstance(expr, Bit):
-        if expr.bit_type == BitType.NOT:
-            # fixed values
-            if bit_args[0].bit_type == BitType.CONST:
-                expr = const_bit(not bit_args[0].value)
-            elif bit_args[0].bit_type == BitType.NOT:
-                expr = bit_args[0].operands[0]
+@collapse.rule(BitType.XOR)
+def coll_XOR_self(expr: Bit, a: Bit, b: Bit):
+    """a ^ a  ->  0"""
+    if a is b:
+        return const_bit(False)
 
-        elif expr.bit_type == BitType.EQ:
-            # skip - assume all EQ have been decomposed
-            pass
-        elif expr.bit_type == BitType.NE:
-            # a != a  ->  false
-            if uint_args[0] is uint_args[1]:
-                expr = const_bit(False)
+@collapse.rule(BitType.XOR)
+def coll_XOR_negation(expr: Bit, a: Bit, b: Bit):
+    """a ^ ~a  ->  1"""
+    if _is_negation_pair(a, b):
+        return const_bit(True)
 
-        elif expr.bit_type == BitType.LT:
-            a, b = uint_args
-            atype = a.uint_type
-            btype = b.uint_type
-            if a is b:
-                # a < a  ->  0
-                expr = const_bit(False)
-            elif atype == UIntType.CONST:
-                if btype == UIntType.CONST:
-                    expr = const_bit(a.const_value < b.const_value)
-            elif btype == UIntType.CONST:
-                bval = b.const_value
-                if bval == 0:
-                    expr = const_bit(False)
-                elif bval >= (1 << a.width):
-                    expr = const_bit(True)
+@collapse.rule(BitType.AND)
+def coll_AND_const_fold(expr: Bit, a: Bit, b: Bit):
+    """direct evaluation of const"""
+    a, b = _sorted_bits(a, b)
+    if a.bit_type == b.bit_type == BitType.CONST:
+        return const_bit(cast(bool, a.value) & cast(bool, b.value))
 
-        elif expr.bit_type == BitType.GT:
-            # skip - assume all GT have been decomposed
-            pass
-        elif expr.bit_type == BitType.LE:
-            # skip - assume all LE have been decomposed
-            pass
-        elif expr.bit_type == BitType.GE:
-            # skip - assume all GE have been decomposed
-            pass
-        else:
-            # now all commutative (Bit, Bit) -> Bit operators
+@collapse.rule(BitType.AND)
+def coll_AND_const_identity(expr: Bit, a: Bit, b: Bit):
+    """
+    0 & b  ->  0
+    1 & b  ->  b
+    """
+    a, b = _sorted_bits(a, b)
+    if a.bit_type == BitType.CONST:
+        return b if a.value else const_bit(False)
 
-            # sort arguments by type
-            # places CONST and VAR at the front
-            sorted_bits = sorted(bit_args, key=attrgetter("bit_type"))
-            a, b = sorted_bits
-            atype = a.bit_type
-            btype = b.bit_type
-            aval = cast(bool, a.value)
-            bval = cast(bool, b.value)
+@collapse.rule(BitType.AND)
+def coll_AND_self(expr: Bit, a: Bit, b: Bit):
+    """a & a  ->  a"""
+    if a is b:
+        return a
 
-            # both constants
-            ab_const = atype == btype == BitType.CONST
+@collapse.rule(BitType.AND)
+def coll_AND_negation(expr: Bit, a: Bit, b: Bit):
+    """a & ~a  ->  0"""
+    if _is_negation_pair(a, b):
+        return const_bit(False)
 
-            # a is ~b
-            a_xor_b = (atype == BitType.NOT and a.operands[0] is b
-                      or btype == BitType.NOT and b.operands[0] is a)
-            if expr.bit_type == BitType.XOR:
-                if ab_const:
-                    # direct evaluation of const
-                    expr = const_bit(aval ^ bval)
-                elif atype == BitType.CONST:
-                    # 0 ^ b  ->  b
-                    # 1 ^ b  ->  ~b
-                    expr = ~b if aval else b
-                elif a is b:
-                    # a ^ a  ->  0
-                    expr = const_bit(False)
-                elif a_xor_b:
-                    # a ^ ~a  ->  1
-                    expr = const_bit(True)
+@collapse.rule(BitType.OR)
+def coll_OR(expr: Bit, a: Bit, b: Bit):
+    # skip - assume all OR have been decomposed
+    pass
 
-            elif expr.bit_type == BitType.AND:
-                if ab_const:
-                    # direct evaluation of const
-                    expr = const_bit(aval & bval)
-                elif atype == BitType.CONST:
-                    # 0 & b  ->  0
-                    # 1 & b  ->  b
-                    expr = b if aval else const_bit(False)
-                elif a is b:
-                    # a & a  ->  a
-                    expr = a
-                elif a_xor_b:
-                    # a & ~a  ->  0
-                    expr = const_bit(False)
+# ---- UInt operators ----
 
-            elif expr.bit_type == BitType.OR:
-                # skip - assume all OR have been decomposed
-                pass
-            
-    elif isinstance(expr, UInt):
-        if expr.uint_type == UIntType.ADD:
-            pass
-        elif expr.uint_type == UIntType.SUB:
-            pass
-        elif expr.uint_type == UIntType.MUL:
-            pass
-        elif expr.uint_type == UIntType.LSHIFT:
-            pass
-        elif expr.uint_type == UIntType.RSHIFT:
-            pass
+@collapse.rule(UIntType.ADD)
+def coll_ADD(expr: UInt, a: UInt, b: UInt):
+    pass
 
-    return expr
+@collapse.rule(UIntType.SUB)
+def coll_SUB(expr: UInt, a: UInt, b: UInt):
+    pass
+
+@collapse.rule(UIntType.MUL)
+def coll_MUL(expr: UInt, a: UInt, b: UInt):
+    pass
+
+@collapse.rule(UIntType.LSHIFT)
+def coll_LSHIFT(expr: UInt, a: UInt, b: UInt):
+    pass
+
+@collapse.rule(UIntType.RSHIFT)
+def coll_RSHIFT(expr: UInt, a: UInt, b: UInt):
+    pass
+
 
 def optimize_expr(expr: ASTNode) -> ASTNode:
     """
     apply simplifications to minimize the complexity and gate requirements of the expression tree
     """
-    expr = traverse_transform(expr, _decompose_ops)
-    expr = traverse_transform(expr, _collapse_identities)
+    expr = run_rule_pass(expr, decompose)
+    expr = run_rule_pass(expr, collapse)
     return expr
 
