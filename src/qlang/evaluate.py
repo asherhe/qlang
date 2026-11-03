@@ -186,6 +186,8 @@ def _int_only_op(
         case UIntType.MUL: 
             return u1v * u2v
         case UIntType.LSHIFT: 
+            if u2v >= node.width: 
+                return 0
             return (u1v << u2v) & ((1 << node.width) - 1)  # assumes fixed width for uint
         case UIntType.RSHIFT: 
             return u1v >> u2v
@@ -212,7 +214,7 @@ def _evaluate_uncached(
                 _var_checker((b,), assignments)
                 if b.bit_type in (BitType.VAR, BitType.CONST): 
                     return not _get_values((b,), assignments)[0]
-                return not _evaluate_uncached(b, assignments, memo)
+                return not _evaluate(b, assignments, memo)
             if len(node.operands) != 2: 
                 raise ValueError("binary operations must have exactly two operands")
             if type in (BitType.XOR, BitType.AND, BitType.OR): 

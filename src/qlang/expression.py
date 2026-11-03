@@ -290,6 +290,13 @@ def var_bit(name: str, index: int | None = None, parent_width: int | None = None
     """
     create a named variable Bit node. optional index and parent width fields for Bits that are part of a UInt
     """
+    if parent_width: 
+        if parent_width <= 0: 
+            raise ValueError("specified parent width must be positive")
+        if not index: 
+            raise ValueError("index must be present if parent width is present")
+        if index < 0 or index >= parent_width: 
+            raise ValueError("index is out of bounds compared to parent width") 
     return Bit(
         bit_type=BitType.VAR,
         name=name,
