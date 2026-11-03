@@ -46,6 +46,12 @@ class ASTNode:
     def is_leaf(self) -> bool:
         return len(self.operands) == 0
 
+    def __bool__(self): 
+        raise TypeError(
+            "AST nodes cannot be used as Python booleans. "
+            "Use bitwise operators to build expressions "
+            "or evaluate the expression explicitly"
+        )
 
 class Bit(ASTNode):
     """
@@ -79,22 +85,36 @@ class Bit(ASTNode):
         self.operands = operands
 
     @staticmethod
-    def _operator(type: BitType, **kwargs): 
-        key = (type, kwargs)
+    def as_bit(val): 
+        if isinstance(val, Bit): 
+            return val
+        if isinstance(val, (bool, int)): 
+            return const_bit(val)
+        return NotImplemented
+
+    @staticmethod
+    def cache_bit(type: BitType, operands: tuple[ASTNode, ...]): 
+        key = (Bit, type, tuple(id(node) for node in operands))
         if key not in ASTNode.cache: 
-            if 'other' in kwargs: 
-                if isinstance(kwargs['other'], bool):
-                    kwargs['other'] = const_bit(kwargs['other'])
-                ASTNode.cache[key] = Bit(
-                    bit_type=type, 
-                    operands=(kwargs['self'], kwargs['other'])
-                )
-            else: 
-                ASTNode.cache[key] = Bit(
-                    bit_type=type, 
-                    operands=(kwargs['self'])
-                )
+            ASTNode.cache[key] = Bit(
+                bit_type=type, 
+                operands=operands,
+            )
         return ASTNode.cache[key]
+
+    @staticmethod
+    def _operator(type: BitType, **kwargs): 
+        left = Bit.as_bit(kwargs['self'])
+        if left is NotImplemented: 
+            return NotImplemented
+        if 'other' not in kwargs: 
+            return Bit.cache_bit(type, (left,))
+        
+        right = Bit.as_bit(kwargs['other'])
+        if right is NotImplemented: 
+            return NotImplemented
+        
+        return Bit.cache_bit(type, (left, right))
     
     def __and__(self, other): 
         return Bit._operator(BitType.AND, self=self, other=other)
@@ -102,7 +122,7 @@ class Bit(ASTNode):
     def __rand__(self, other): 
         return self.__and__(other)
 
-    def __not__(self): 
+    def __invert__(self): 
         return Bit._operator(BitType.NOT, self=self)
 
     def __xor__(self, other): 
@@ -166,25 +186,71 @@ class UInt(ASTNode):
         self.operands = operands
 
     @staticmethod
-    def _operator(type: UIntType, **kwargs): 
-        key = (type, kwargs)
-        if key not in ASTNode.cache: 
-            if 'other' in kwargs: 
-                if isinstance(kwargs['other'], int):
-                    kwargs['other'] = const_uint(kwargs['other'], width=None)
-                ASTNode.cache[key] = UInt(
-                    uint_type=type, 
-                    width=kwargs['width'],
-                    operands=(kwargs['self'], kwargs['other']),
-                )
-            else: 
-                ASTNode.cache[key] = UInt(
-                    uint_type=type, 
-                    width=kwargs['width'],
-                    operands=(kwargs['self']),
-                )
-        return ASTNode.cache[key]
+    def as_uint(val): 
+        if isinstance(val, UInt): 
+            return val
+        if isinstance(val, (bool, int)): 
+            return const_uint(val, width=None)
+        return NotImplemented
     
+    @staticmethod
+    def cache_int(type: UIntType, width: int, operands): 
+        key = (UIntType, type, tuple(id(node) for node in operands))
+        if key not in ASTNode.cache: 
+            ASTNode.cache[key] = UInt(
+                uint_type=type,
+                width=width, 
+                operands=operands,
+            )
+        return ASTNode.cache[key]
+
+    @staticmethod
+    def _operator(type: UIntType, **kwargs): 
+        left = UInt.as_uint(kwargs['self'])
+        if left is NotImplemented: 
+            return NotImplemented
+        if 'other' not in kwargs: 
+            return UInt.cache_int(type, left.width, (left,))
+        
+        right = UInt.as_uint(kwargs['other'])
+        if right is NotImplemented: 
+            return NotImplemented
+        
+        if type == UIntType.ADD: 
+            width = max(left.width, right.width) + 1
+        elif type == UIntType.MUL: 
+            width = left.width + right.width
+        elif type in (UIntType.LSHIFT, UIntType.RSHIFT): 
+            width = left.width                                 # this assumes fixed-width behavior for now
+        else: 
+            raise ValueError(f"unsupported UInt operation: {type}")
+        
+        return UInt.cache_int(type, width, (left, right))
+
+    def _compare(self, type: BitType, other): 
+        right = UInt.as_uint(other)
+        if right is NotImplemented: 
+            return NotImplemented
+        return Bit.cache_bit(type, (self, right))
+
+    def __eq__(self, other): 
+        return self._compare(BitType.EQ, other)
+
+    def __ne__(self, other): 
+        return self._compare(BitType.NE, other)
+    
+    def __gt__(self, other): 
+        return self._compare(BitType.GT, other)
+
+    def __lt__(self, other): 
+        return self._compare(BitType.LT, other)
+
+    def __ge__(self, other): 
+        return self._compare(BitType.GE, other)
+
+    def __le__(self, other): 
+        return self._compare(BitType.LE, other)    
+
     def __add__(self, other):
         return UInt._operator(UIntType.ADD, self=self, other=other)
 
@@ -201,13 +267,13 @@ class UInt(ASTNode):
         return UInt._operator(UIntType.LSHIFT, self=self, other=other)
 
     def __rlshift__(self, other): 
-        return self.__lshift__(other)
+        return UInt._operator(UIntType.LSHIFT, self=other, other=self)
 
     def __rshift__(self, other): 
         return UInt._operator(UIntType.RSHIFT, self=self, other=other)
 
     def __rrshift__(self, other): 
-        return self.__rshift__(other)
+        return UInt._operator(UIntType.RSHIFT, self=other, other=self)
 
 # -------- factory functions --------
 
@@ -215,7 +281,7 @@ def const_bit(value: int | bool) -> Bit:
     """create a constant Bit node with a given value"""
 
     if isinstance(value, int):
-        value = value == 0
+        value = value != 0
     return Bit(
         bit_type=BitType.CONST,
         value=value,
@@ -234,12 +300,8 @@ def var_bit(name: str, index: int | None = None) -> Bit:
 def const_uint(value: int, width: int | None) -> UInt:
     """create a constant UInt of CONST Bits. if width is not given, infer the smallest width that fits val"""
     if width is None:
-        v = value
-        width = 1
-        while v > 1:
-            width += 1
-            v >>= 1
-
+        width = max(1, value.bit_length())
+    
     bits = tuple(const_bit((value >> i) & 1) for i in range(width))
     return UInt(
         uint_type=UIntType.CONST,
