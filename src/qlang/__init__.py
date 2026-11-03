@@ -4,6 +4,7 @@ from .compile import (
     compile_oracle,
 )
 from .expression import (
+    ASTNode,
     Bit,
     UInt,
     const_bit,
@@ -12,5 +13,5 @@ from .expression import (
     var_uint,
     uint,
 )
-from .evaluate import evaluate
+from .optimize import optimize_expr
 from .qalgorithm import search
