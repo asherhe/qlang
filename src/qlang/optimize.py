@@ -181,21 +181,33 @@ def coll_LT_const_bounds(expr: Bit, a: UInt, b: UInt):
     comparison against a constant that is out of range of the other operand
     a < b  ->  0       if a >= max b size
     0 < b  ->  b != 0  cheaper than a comparison
+    (max-1) < b  ->  b == max  only max is above max-1, written as ~(b != max)
     a < 0  ->  0
     a < b  ->  1       if a > max b size
+    a < max  ->  a != max  only max is not below max
+    a < 1    ->  a == 0    only 0 is below 1, written as ~(a != 0)
     """
     if a.uint_type == UIntType.CONST:
         aval = a.const_value
-        if aval >= (1 << b.width) - 1:
+        bmax = (1 << b.width) - 1
+        if aval >= bmax:
             return const_bit(False)
         if aval == 0:
             return b != 0
+        if aval == bmax - 1:
+            return ~(b != bmax)
     if b.uint_type == UIntType.CONST:
         bval = b.const_value
+        amax = (1 << a.width) - 1
         if bval == 0:
             return const_bit(False)
-        if bval >= (1 << a.width):
+        if bval > amax:
             return const_bit(True)
+        # checked before the a < 1 case so that a 1-bit a (where max is 1) gets the NOT-free form
+        if bval == amax:
+            return a != bval
+        if bval == 1:
+            return ~(a != 0)
 
 @collapse.rule(BitType.GT)
 def coll_GT(expr: Bit, a: UInt, b: UInt):
