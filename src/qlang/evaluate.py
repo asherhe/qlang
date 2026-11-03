@@ -21,13 +21,18 @@ def var_checker(
             if node.name not in assignments: 
                 raise ValueError(f"variable '{node.name}' is not assigned")
             value = assignments[node.name]
-            if isinstance(node, UInt): 
+            if isinstance(node, UInt) or (isinstance(node, Bit) and node.index is not None): 
                 if not isinstance(value, (int, bool)): 
                     raise ValueError(f"assignment value '{node.name}' must be an integer")
                 if value < 0: 
                     raise ValueError(f"assignment value '{node.name}' must be non-negative")
-                elif value >= (1 << node.width): 
+                elif isinstance(node, UInt) and value >= (1 << node.width): 
                     raise ValueError(f"assignment value '{node.name}' cannot be larger than width")
+                elif isinstance(node, Bit) and value >= (1 << cast(int, node.parent_width)): 
+                    if not node.parent_width: 
+                        raise ValueError("parent width missing for Bit belonging to UInt")
+                    if value >= (1 << node.parent_width): 
+                        raise ValueError(f"assignment value '{node.name}' cannot be larger than parent width")
         elif isinstance(node, Bit) and node.bit_type == BitType.CONST: 
             if node.value is None: 
                 raise ValueError("const Bit has missing value")

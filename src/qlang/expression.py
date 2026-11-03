@@ -63,20 +63,24 @@ class Bit(ASTNode):
     value: bool | None
     # if a variable bit, maps back to the Bit's index in the containing UInt if it exists
     index: int | None
+    # used for validation if this belongs to a UInt
+    parent_width: int | None
 
     def __init__(
         self, 
         *, 
         bit_type: BitType,
         name: str | None = None, 
-        index: int | None = None,
         value: bool | None = None, 
+        index: int | None = None,
+        parent_width: int | None = None,
         operands: tuple[ASTNode, ...] = (),
     ): 
         self.bit_type = bit_type
         self.name = name
-        self.index = index
         self.value = value
+        self.index = index
+        self.parent_width = parent_width
         self.operands = operands
 
     @staticmethod
@@ -282,14 +286,15 @@ def const_bit(value: int | bool) -> Bit:
         value=value,
     )
 
-def var_bit(name: str, index: int | None = None) -> Bit:
+def var_bit(name: str, index: int | None = None, parent_width: int | None = None) -> Bit:
     """
-    create a named variable Bit node. optional index field for Bits that are part of a UInt
+    create a named variable Bit node. optional index and parent width fields for Bits that are part of a UInt
     """
     return Bit(
         bit_type=BitType.VAR,
         name=name,
         index=index,
+        parent_width=parent_width,
     )
 
 def const_uint(value: int, width: int | None) -> UInt:
@@ -314,7 +319,7 @@ def var_uint(name: str, width: int) -> UInt:
     """create a variable UInt"""
     if width <= 0: 
         raise ValueError("specified width must be positive")
-    bits = tuple(var_bit(name, i) for i in range(width))
+    bits = tuple(var_bit(name, i, parent_width=width) for i in range(width))
     return UInt(
         uint_type=UIntType.VAR,
         width=width,
