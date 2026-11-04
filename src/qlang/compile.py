@@ -94,6 +94,9 @@ def compile_oracle(expr: Bit) -> Oracle:
                     clean_ancillas.append(qubit_label)
             qubit_label += 1
 
+    if id(expr) in clean_ancillas:
+        clean_ancillas.remove(id(expr))
+
     compute = QuantumCircuit(qubit_label)
 
     def fresh_scratch() -> int:

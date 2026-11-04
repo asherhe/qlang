@@ -134,6 +134,8 @@ class Bit(ASTNode):
         self.operands = operands
 
         if bit_type == BitType.VAR:
+            if len(operands) != 0:
+                raise ValueError(f"{bit_type} expects 0 operand(s), got {len(operands)}")
             if name in ASTNode.variables:
                 raise ValueError(f"variable {name} may only be defined once")
             else:
