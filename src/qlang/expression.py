@@ -59,7 +59,7 @@ class ASTNode:
     @classmethod
     def _get_cache_key(cls, **kwargs) -> tuple[Any, ...]:
         """
-        unique identifie for this ASTNode, implemented by subclassed types
+        unique identifier for this ASTNode, implemented by subclassed types
         """
         raise NotImplementedError
 

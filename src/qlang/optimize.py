@@ -160,6 +160,8 @@ def coll_NE_self(expr: Bit, a: UInt, b: UInt):
 def coll_NE_const_fold(expr: Bit, a: UInt, b: UInt):
     if a.uint_type == b.uint_type == UIntType.CONST:
         return const_bit(a.const_value != b.const_value)
+    if isinstance(a, Bit) and isinstance(b, Bit): 
+        return a ^ b
 
 @collapse.rule(BitType.NE)
 def coll_NE_const_bounds(expr: Bit, a: UInt, b: UInt):
@@ -180,6 +182,8 @@ def coll_LT_const_fold(expr: Bit, a: UInt, b: UInt):
     """direct evaluation of const"""
     if a.uint_type == b.uint_type == UIntType.CONST:
         return const_bit(a.const_value < b.const_value)
+    if isinstance(a, Bit) and isinstance(b, Bit): 
+        return (~a) & b
 
 @collapse.rule(BitType.LT)
 def coll_LT_const_bounds(expr: Bit, a: UInt, b: UInt):
@@ -344,10 +348,8 @@ coll_ADD_const_reassoc = collapse.rule(UIntType.ADD)(_const_reassoc(UIntType.ADD
 def coll_SUB_const_fold(expr: UInt, a: UInt, b: UInt):
     if a.uint_type == b.uint_type == UIntType.CONST:
         diff = a.const_value - b.const_value
-        width = max(a.width, b.width)
-        if (diff < 0):
-            # convert to two's complement
-            diff += 1 << width
+        width = expr.width
+        diff = (a.const_value - b.const_value) & ((1 << width) - 1)
         return const_uint(diff, width)
 
 @collapse.rule(UIntType.SUB)
@@ -359,7 +361,7 @@ def coll_SUB_const_identity(expr: UInt, a: UInt, b: UInt):
 @collapse.rule(UIntType.SUB)
 def coll_SUB_self(expr: UInt, a: UInt, b: UInt):
     if a is b:
-        return const_uint(0, a.width)
+        return const_uint(0, expr.width)
 
 @collapse.rule(UIntType.SUB)
 def coll_SUB_add_cancel(expr: UInt, a: UInt, b: UInt):
