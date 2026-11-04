@@ -142,64 +142,39 @@ def compile_oracle(expr: Bit) -> Oracle:
 
 def validate_expression(expr: Bit) -> None:
     """Check that every reachable node is supported before allocating qubits."""
-    # Dictionary: supported operation -> required number of child nodes.
-    # Leaves have no children; NOT has one; the other operations have two.
-    operand_counts = {
-        BitType.VAR: 0,
-        BitType.CONST: 0,
-        BitType.UINT: 0,
-        BitType.NOT: 1,
-        BitType.AND: 2,
-        BitType.OR: 2,
-        BitType.XOR: 2,
-        BitType.NE: 2,
-        BitType.LT:2
-
-    }
-
-    # Track integer IDs instead of objects because nodes overload equality.
     # visiting catches circular dependencies; visited skips shared nodes that
     # have already passed every check. Neither set changes the expression.
     visiting: set[int] = set()
     visited: set[int] = set()
 
     def visit(node: ASTNode) -> None:
-        # Check the class before reading .bit_type. UInt has .uint_type instead
-        # and must be decomposed by stage 2 before reaching this compiler.
-        if not isinstance(node, Bit):
-            raise TypeError("Expected a Bit node; decompose UInt expressions in stage 2 first")
-
         node_id = id(node)
         if node_id in visiting:
             raise ValueError("Cycle detected in expression graph")
         if node_id in visited:
             return
 
-        # BitType is an IntEnum: checking its class prevents an unrelated
-        # integer or UIntType member with the same number from being accepted.
-        if not isinstance(node.bit_type, BitType):
-            raise TypeError("A Bit node's bit_type must be a BitType member")
-        if node.bit_type not in operand_counts:
-            raise ValueError(f"Unsupported operation {node.bit_type.name}; decompose it in stage 2 first")
-        if not isinstance(node.operands, tuple):
-            raise TypeError("Node operands must be a tuple; use (operand,) for one operand")
+        children = node.children
+        if not isinstance(children, tuple):
+            raise TypeError("Node children must be a tuple; use (operand,) for one operand")
 
-        expected = operand_counts[node.bit_type]
-        if len(node.operands) != expected:
+        expected = node.expected_operands
+        if len(children) != expected:
             raise ValueError(
-                f"{node.bit_type.name} expects {expected} operand(s), got {len(node.operands)}"
+                f"{node} expects {expected} operand(s), got {len(node.operands)}"
             )
 
-        if node.bit_type in (BitType.VAR, BitType.UINT):
-            input_slot(node)
-        elif node.bit_type == BitType.CONST:
-            if type(node.value) is not bool:
-                raise TypeError("constant bit nodes should be true or false")
+        if isinstance(node, Bit):
+            if node.bit_type in (BitType.VAR, BitType.UINT):
+                input_slot(node)
+            elif node.bit_type == BitType.CONST:
+                if type(node.value) is not bool:
+                    raise TypeError("constant bit nodes should be true or false")
 
         # Recurse so validation also reaches deeply nested operands. A valid
         # leaf has an empty tuple, which naturally ends that branch.
         visiting.add(node_id)
-        for operand in circuit_operands(node):
+        for operand in node.children:
             visit(operand)
         visiting.remove(node_id)
         visited.add(node_id)
