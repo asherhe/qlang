@@ -418,6 +418,7 @@ def coll_MUL_pow2(expr: UInt, a: UInt, b: UInt):
         if c > 1 and c & (c - 1) == 0:
             k = c.bit_length() - 1
             bits = (const_bit(0),) * k + b.bits
+            # pad to size
             bits += (const_bit(0),) * (expr.width - len(bits))
             return bits_uint(bits)
 
@@ -443,6 +444,14 @@ def coll_LSHIFT_overshift(expr: UInt, a: UInt, b: UInt):
     """a << c  ->  0 when c >= width"""
     if b.uint_type == UIntType.CONST and b.const_value >= expr.width:
         return const_uint(0, expr.width)
+
+@collapse.rule(UIntType.LSHIFT)
+def coll_LSHIFT_const_route(expr: UInt, a: UInt, b: UInt):
+    """hard-code a << c when c is constant"""
+    if b.uint_type == UIntType.CONST:
+        bits = (0,) * b.const_value + a.bits
+        bits = bits[:a.width]
+        return bits_uint(bits)
 
 @collapse.rule(UIntType.LSHIFT)
 def coll_LSHIFT_merge(expr: UInt, a: UInt, b: UInt):
@@ -478,6 +487,14 @@ def coll_RSHIFT_overshift(expr: UInt, a: UInt, b: UInt):
     """a >> c  ->  0 when c >= width"""
     if b.uint_type == UIntType.CONST and b.const_value >= a.width:
         return const_uint(0, expr.width)
+
+@collapse.rule(UIntType.RSHIFT)
+def coll_RSHIFT_const_route(expr: UInt, a: UInt, b: UInt):
+    """hard-code a >> c when c is constant"""
+    if b.uint_type == UIntType.CONST:
+        bits = a.bits + (0,) * b.const_value
+        bits = bits[-a.width:]
+        return bits_uint(bits)
 
 @collapse.rule(UIntType.RSHIFT)
 def coll_RSHIFT_merge(expr: UInt, a: UInt, b: UInt):
