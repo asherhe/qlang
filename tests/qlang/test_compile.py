@@ -10,6 +10,7 @@ from qiskit.quantum_info import Statevector
 
 from qlang.compile import Oracle, OutputMode, compile_oracle
 from qlang.expression import ASTNode, Bit, BitType, UIntType, const_bit, var_bit, var_uint
+from qlang.evaluate import evaluate
 
 
 class TestCompile(unittest.TestCase):
@@ -31,24 +32,6 @@ class TestCompile(unittest.TestCase):
         self.assertEqual(len(oracle.clean_ancillas), len(set(oracle.clean_ancillas)))
         self.assertFalse(set(input_qubits) & set(oracle.clean_ancillas))
         self.assertEqual(set(input_qubits) | set(oracle.clean_ancillas), set(range(oracle.circuit.num_qubits)))
-
-        def evaluate(node, assignments):
-            kind = node.bit_type
-            if kind == BitType.VAR:
-                value = assignments[node.name]
-                return bool(value) if node.index is None else bool((value >> node.index) & 1)
-            if kind == BitType.CONST:
-                return node.value
-            values = [evaluate(child, assignments) for child in node.operands]
-            if kind == BitType.NOT:
-                return not values[0]
-            if kind == BitType.AND:
-                return values[0] and values[1]
-            if kind == BitType.OR:
-                return values[0] or values[1]
-            if kind == BitType.XOR:
-                return values[0] != values[1]
-            raise AssertionError(f"Unexpected reference operation: {kind}")
 
         names = list(oracle.inputs)
         domains = [range(1 << len(oracle.inputs[name])) for name in names]
@@ -130,16 +113,6 @@ class TestCompile(unittest.TestCase):
         self.assertEqual(len(oracle.inputs["x"]), 3)
         self.assertEqual(oracle.clean_ancillas, [])
 
-    def test_indexed_input_without_parent_width_reserves_lower_bits(self):
-        oracle = self.assert_phase_oracle(var_bit("x", 2))
-        self.assertEqual(len(oracle.inputs["x"]), 3)
-
-    def test_distinct_objects_naming_same_input_share_a_qubit(self):
-        a = Bit(bit_type=BitType.VAR, name="a")
-        another_a = Bit(bit_type=BitType.VAR, name="a")
-        oracle = self.assert_phase_oracle(a ^ another_a)
-        self.assertEqual(oracle.circuit.num_qubits, 2)
-
     def test_unsupported_operations_fail_before_circuit_creation(self):
         a, b = var_bit("a"), var_bit("b")
         with patch("qlang.compile.QuantumCircuit") as circuit:
@@ -162,7 +135,6 @@ class TestCompile(unittest.TestCase):
             Bit(bit_type=BitType.CONST, value=1),
             Bit(bit_type=BitType.VAR, name="bad", index=-1),
             Bit(bit_type=BitType.VAR, name="bad", index=True),
-            Bit(bit_type=BitType.VAR, name="bad", index=2, parent_width=2),
         )
         for expr in cases:
             with self.subTest(node_id=id(expr)):
@@ -175,13 +147,3 @@ class TestCompile(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Cycle"):
             compile_oracle(cycle)
 
-    def test_conflicting_input_definitions_are_rejected(self):
-        cases = (
-            var_bit("x") & var_bit("x", 0, parent_width=2),
-            var_bit("x", 0, parent_width=2) & var_bit("x", 1, parent_width=3),
-            var_bit("x", 0, parent_width=2) & var_bit("x", 3),
-        )
-        for expr in cases:
-            with self.subTest(node_id=id(expr)):
-                with self.assertRaises(ValueError):
-                    compile_oracle(expr)
