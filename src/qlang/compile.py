@@ -2,8 +2,9 @@ from dataclasses import dataclass, field
 from enum import Enum, auto
 
 from qiskit import QuantumCircuit
+from qiskit.circuit import AncillaQubit
 
-from .expression import ASTNode, Bit, BitType, UInt, UIntType
+from .expression import ASTNode, Bit, BitType, UInt, UIntType, const_bit
 
 class OutputMode(Enum):
     BIT_FLIP = auto()
@@ -44,7 +45,7 @@ def compile_oracle(expr: Bit) -> Oracle:
     # as well so variable-only and constant-only expressions work.
     nodes: dict[int, ASTNode] = {id(expr): expr}
     for operator in operation_order:
-        for operand in operator.operands:
+        for operand in circuit_operands(operator):
             nodes[id(operand)] = operand
 
     qubit_allocation: dict[int, int] = {}
@@ -82,6 +83,13 @@ def compile_oracle(expr: Bit) -> Oracle:
         qubit_label += 1
 
     compute = QuantumCircuit(qubit_label)
+
+    def fresh_scratch() -> int:
+        index = compute.num_qubits
+        compute.add_bits([AncillaQubit()])
+        clean_ancillas.append(index)
+        return index
+
     for node in nodes.values():
         if isinstance(node, Bit) and node.bit_type == BitType.CONST and node.value:
             compute.x(qubit_allocation[id(node)])
@@ -90,6 +98,18 @@ def compile_oracle(expr: Bit) -> Oracle:
     for operator in operation_order:
         check_operation = operator.bit_type
         target_qubit = qubit_allocation[id(operator)]
+
+        if check_operation in (BitType.NE, BitType.LT):
+            left, right = comparison_bits(operator)
+            left_qubits = [qubit_allocation[id(bit)] for bit in left]
+            right_qubits = [qubit_allocation[id(bit)] for bit in right]
+
+            if check_operation == BitType.NE:
+                quantumNE(compute, left_qubits, right_qubits, target_qubit, fresh_scratch)
+            else:
+                quantumLT(compute, left_qubits, right_qubits, target_qubit, fresh_scratch)
+
+            continue
         qubitA = qubit_allocation[id(operator.operands[0])]
         if check_operation == BitType.NOT:
             quantumNOT(compute, qubitA, target_qubit)
@@ -106,8 +126,7 @@ def compile_oracle(expr: Bit) -> Oracle:
 
     # Calculate the predicate, mark its phase, then undo all scratch work.
     predicate_qubit = qubit_allocation[id(expr)]
-    oracle_circuit = QuantumCircuit(qubit_label)
-    oracle_circuit.compose(compute, inplace=True)
+    oracle_circuit = compute.copy()
     oracle_circuit.z(predicate_qubit)
     oracle_circuit.compose(compute.inverse(), inplace=True)
 
@@ -132,6 +151,8 @@ def validate_expression(expr: Bit) -> None:
         BitType.AND: 2,
         BitType.OR: 2,
         BitType.XOR: 2,
+        BitType.NE: 2,
+        BitType.LT:2
 
     }
 
@@ -177,7 +198,7 @@ def validate_expression(expr: Bit) -> None:
         # Recurse so validation also reaches deeply nested operands. A valid
         # leaf has an empty tuple, which naturally ends that branch.
         visiting.add(node_id)
-        for operand in node.operands:
+        for operand in circuit_operands(node):
             visit(operand)
         visiting.remove(node_id)
         visited.add(node_id)
@@ -186,12 +207,9 @@ def validate_expression(expr: Bit) -> None:
 
 
 def parse_input(node: Bit) -> list[Bit]:
-
-
     operation_order: list[Bit] = []
     visiting: set[int] = set()
     visited: set[int] = set()
-
     def visit(node: ASTNode) -> None:
         if not isinstance(node, Bit):
             raise TypeError("Expected decomposed Boolean Bit nodes")
@@ -203,7 +221,7 @@ def parse_input(node: Bit) -> list[Bit]:
         if not isinstance(node.operands, tuple):
             raise TypeError("yo fix ur shit bro keep multiple arguments in a tuple")
         visiting.add(node_id)
-        for operand in node.operands:
+        for operand in circuit_operands(node):
             visit(operand)
         visiting.remove(node_id)
         visited.add(node_id)
@@ -219,17 +237,13 @@ def parse_input(node: Bit) -> list[Bit]:
 def input_slot(node: Bit) -> tuple[str, int, int]:
     if node.bit_type == BitType.VAR:
         name, width, index = node.name, 1, 0
-
     elif node.bit_type == BitType.UINT:
         parent = node.parent_uint
         if not isinstance(parent, UInt) or parent.uint_type != UIntType.VAR:
             raise ValueError("lower computed integer bits before compiling")
-
         name, width, index = parent.name, parent.width, node.index
-
     else:
         raise ValueError("expected an input bit")
-
     if not isinstance(name, str) or not name.strip():
         raise ValueError("input needs a name")
     if type(width) is not int or width < 1:
@@ -239,6 +253,24 @@ def input_slot(node: Bit) -> tuple[str, int, int]:
 
     return name, width, index
 
+
+def comparison_bits(node: Bit):
+    left,right = node.operands
+    if isinstance(left, Bit) and isinstance(right, Bit):
+        return (left,), (right,)
+    if not isinstance(left, UInt) or not isinstance(right, UInt):
+        raise TypeError("Comparison operands must both be Bit or both be UInt")
+    width = max(left.width, right.width)
+    zero = const_bit(False)
+    return (left.bits + (zero,) * (width - left.width), right.bits + (zero,) * (width - right.width),)
+
+
+def circuit_operands(node: Bit):
+    if node.bit_type in (BitType.NE, BitType.LT):
+        left, right = comparison_bits(node)
+        return left + right
+
+    return node.operands
 
 
 def quantumAND(compute: QuantumCircuit,qubitA: int, qubitB: int, target_qubit: int) -> None:
@@ -263,5 +295,46 @@ def quantumXOR(compute: QuantumCircuit, qubitA: int, qubitB: int, target_qubit: 
 def quantumNOT(compute: QuantumCircuit, qubitA: int, target_qubit: int) -> None:
     compute.x(target_qubit)
     compute.cx(qubitA, target_qubit)
+
+def quantumNE(compute, left, right, target, fresh_scratch):
+    if len(left) == 1:
+        quantumXOR(compute, left[0], right[0], target)
+        return
+
+    differences = []
+    for a, b in zip(left, right, strict=True):
+        difference = fresh_scratch()
+        quantumXOR(compute, a, b, difference)
+        differences.append(difference)
+
+    any_different = differences[0]
+    for i, difference in enumerate(differences[1:], start=1):
+        result = target if i == len(differences) - 1 else fresh_scratch()
+        quantumOR(compute, any_different, difference, result)
+        any_different = result
+
+def quantumLT(compute, left, right, target, fresh_scratch):
+    lower_less = None
+
+    for i, (a, b) in enumerate(zip(left, right, strict=True)):
+        result = target if i == len(left) - 1 else fresh_scratch()
+        not_a = fresh_scratch()
+        quantumNOT(compute, a, not_a)
+
+        if lower_less is None:
+            quantumAND(compute, not_a, b, result)
+        else:
+            less_here = fresh_scratch()
+            different = fresh_scratch()
+            equal_here = fresh_scratch()
+            carry_less = fresh_scratch()
+
+            quantumAND(compute, not_a, b, less_here)
+            quantumXOR(compute, a, b, different)
+            quantumNOT(compute, different, equal_here)
+            quantumAND(compute, equal_here, lower_less, carry_less)
+            quantumOR(compute, less_here, carry_less, result)
+
+        lower_less = result
     
 
