@@ -314,7 +314,7 @@ def quantumNOT(compute: QuantumCircuit, qubitA: int, target_qubit: int) -> None:
     compute.x(target_qubit)
     compute.cx(qubitA, target_qubit)
 
-def quantumNE(compute, left, right, target, fresh_scratch):
+def quantumNE(compute: QuantumCircuit, left, right, target, fresh_scratch):
     if len(left) == 1:
         quantumXOR(compute, left[0], right[0], target)
         return
@@ -331,7 +331,7 @@ def quantumNE(compute, left, right, target, fresh_scratch):
         quantumOR(compute, any_different, difference, result)
         any_different = result
 
-def quantumLT(compute, left, right, target, fresh_scratch):
+def quantumLT(compute: QuantumCircuit, left, right, target, fresh_scratch):
     lower_less = None
 
     for i, (a, b) in enumerate(zip(left, right, strict=True)):
@@ -355,7 +355,7 @@ def quantumLT(compute, left, right, target, fresh_scratch):
 
         lower_less = result
     
-def quantumADD(compute, a: list[int], b: list[int], out: list[int], fresh_scratch, carry_in=None, carry_out=None):
+def quantumADD(compute: QuantumCircuit, a: list[int], b: list[int], out: list[int], fresh_scratch, carry_in=None, carry_out=None):
     """
     construct a quantum uint addition circuit
 
@@ -383,9 +383,33 @@ def quantumADD(compute, a: list[int], b: list[int], out: list[int], fresh_scratc
     if carry_in is not None:
         compute.cx(carry_in, carry_ancilla)
 
-    # do the math
+    # copy b onto out
+    for i in range(len(b)):
+        compute.cx(b[i], out[i])
+
+    # forward sweep
+    for i in range(len(b)):
+        compute.cx(carry_ancilla, out[i])
+        compute.cx(carry_ancilla, a[i])
+        compute.ccx(a[i], out[i], carry_ancilla)
+        
+    # forward sweep where b is 0
+    # simplifies to a toffoli gate
+    for i in range(len(b), len(a)):
+        compute.cx(carry_ancilla, a[i])
 
     # copy carry_out state
     if carry_out is not None:
         compute.cx(carry_ancilla, carry_out)
+
+    # forward sweep
+    for i in range(len(a)-1, len(b)-1, -1):
+        compute.cx(carry_ancilla, a[i])
+        
+    # forward sweep where b is 0
+    # simplifies to a toffoli gate
+    for i in range(len(b)-1, -1, -1):
+        compute.ccx(a[i], out[i], carry_ancilla)
+        compute.cx(carry_ancilla, a[i])
+        compute.cx(carry_ancilla, out[i])
 
