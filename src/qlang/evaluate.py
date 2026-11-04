@@ -44,11 +44,7 @@ def _get_values(
         type = node_type(node)
         if isinstance(node, Bit):       # not actually that necessary but for intellisense polymorphism
             if type == BitType.VAR:
-                value = assignments[cast(str, node.name)]
-                if node.index is not None: 
-                    value = bool((value >> node.index) & 1)
-                else: 
-                    value = bool(value)
+                value = bool(assignments[cast(str, node.name)])
                 values += (value,)
             elif type == BitType.CONST: 
                 values += (cast(bool, node.value),)
@@ -192,38 +188,49 @@ def _evaluate_uncached(
     assignments: dict[str, int | bool],
     memo: dict[int, int | bool],
 ) -> int | bool: 
-    if not node.operands:  # leaf node
-        _var_checker((node,), assignments)
-        if node_type(node) not in (BitType.CONST, BitType.VAR, BitType.UINT, UIntType.CONST, UIntType.VAR, UIntType.BITS): 
-            raise ValueError("operator node must have operands")
-        return _get_values((node,), assignments)[0]
-    else:                  # operators
-        if isinstance(node, Bit): 
-            type = node.bit_type
-            if type == BitType.NOT: 
-                if len(node.operands) != 1: 
-                    raise ValueError("NOT must have exactly one operand")
-                b = node.operands[0]
-                if not isinstance(b, Bit): 
-                    raise ValueError("NOT cannot be applied to a type other than Bit")
-                _var_checker((b,), assignments)
-                if b.bit_type in (BitType.VAR, BitType.CONST): 
-                    return not _get_values((b,), assignments)[0]
-                return not _evaluate(b, assignments, memo)
-            if len(node.operands) != 2: 
-                raise ValueError("binary operations must have exactly two operands")
-            if type in (BitType.XOR, BitType.AND, BitType.OR): 
-                return _bitwise_only_op(node, assignments, memo)
-            if type in (BitType.EQ, BitType.NE, BitType.GT, BitType.LT, BitType.GE, BitType.LE): 
-                return _comparison_op(node, assignments, memo)
-            raise ValueError("BitType not recognized")
-        if isinstance(node, UInt): 
-            if len(node.operands) != 2: 
-                raise ValueError("binary operations must have exactly two operands")
-            if node.uint_type not in (UIntType.ADD, UIntType.SUB, UIntType.MUL, UIntType.LSHIFT, UIntType.RSHIFT): 
-                raise ValueError("UIntType not recognized")
-            return _int_only_op(node, assignments, memo)
-        raise ValueError("ASTNode not recognized")
+    if isinstance(node, Bit): 
+        bit_type = node.bit_type
+        if bit_type in (BitType.CONST, BitType.VAR):
+            _var_checker((node,), assignments)
+            return _get_values((node,), assignments)[0]
+        if bit_type == BitType.UINT:
+            index = cast(int, node.index)
+            uint = cast(UInt, node.parent_uint)
+            if 0 > index or index >= uint.width:
+                raise ValueError(f"Bit {index} out of bounds for UInt of width {uint.width}")
+            uint_val = _evaluate(uint, assignments, memo)
+            return bool((uint_val >> index) & 1)
+        if bit_type == BitType.NOT: 
+            if len(node.operands) != 1: 
+                raise ValueError("NOT must have exactly one operand")
+            b = node.operands[0]
+            if not isinstance(b, Bit): 
+                raise ValueError("NOT cannot be applied to a type other than Bit")
+            _var_checker((b,), assignments)
+            if b.bit_type in (BitType.VAR, BitType.CONST): 
+                return not _get_values((b,), assignments)[0]
+            return not _evaluate(b, assignments, memo)
+        if len(node.operands) != 2: 
+            raise ValueError("binary operations must have exactly two operands")
+        if bit_type in (BitType.XOR, BitType.AND, BitType.OR): 
+            return _bitwise_only_op(node, assignments, memo)
+        if bit_type in (BitType.EQ, BitType.NE, BitType.GT, BitType.LT, BitType.GE, BitType.LE): 
+            return _comparison_op(node, assignments, memo)
+        raise ValueError("BitType not recognized")
+    if isinstance(node, UInt): 
+        uint_type = node.uint_type
+        if uint_type in (BitType.CONST, BitType.VAR):
+            _var_checker((node,), assignments)
+            return _get_values((node,), assignments)[0]
+        if uint_type == BitType.UINT:
+            bits = (_evaluate(b, assignments, memo) for b in node.bits)
+            return sum(int(b) << i for i, b in enumerate(bits))
+        if len(node.operands) != 2: 
+            raise ValueError("binary operations must have exactly two operands")
+        if uint_type not in (UIntType.ADD, UIntType.SUB, UIntType.MUL, UIntType.LSHIFT, UIntType.RSHIFT): 
+            raise ValueError("UIntType not recognized")
+        return _int_only_op(node, assignments, memo)
+    raise ValueError("ASTNode not recognized")
 
 # helper that manages caching
 def _evaluate(node, assignments, memo): 
