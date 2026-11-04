@@ -97,14 +97,13 @@ def compile_oracle(expr: Bit) -> Oracle:
         clean_ancillas.append(index)
         return index
 
-    for node in nodes.values():
-        if isinstance(node, Bit) and node.bit_type == BitType.CONST and node.value:
-            compute.x(qubit_allocation[id(node)])
-
     # translate the operation 
     for node_id, node in nodes.items():
+        kind = node_type(node)
         if node.is_leaf:
-            continue
+            # initialize |1> CONST bits
+            if isinstance(node, Bit) and kind == BitType.CONST and node.value:
+                compute.x(qubit_allocation[id(node)])
         elif isinstance(node, Bit):
             op = node.bit_type
             target_qubit = qubit_allocation[node_id]
