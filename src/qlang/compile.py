@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 from enum import Enum, auto
+from typing import Iterable
 
 from qiskit import QuantumCircuit
 from qiskit.circuit import AncillaQubit
@@ -206,29 +207,29 @@ def validate_expression(expr: Bit) -> None:
     visit(expr)
 
 
-def parse_input(node: Bit) -> list[Bit]:
-    operation_order: list[Bit] = []
+def parse_input(node: ASTNode) -> list[ASTNode]:
+    """topological sort of an ASTNode graph"""
+
+    operation_order: list[ASTNode] = []
     visiting: set[int] = set()
     visited: set[int] = set()
     def visit(node: ASTNode) -> None:
-        if not isinstance(node, Bit):
-            raise TypeError("Expected decomposed Boolean Bit nodes")
         node_id = id(node)
         if node_id in visiting:
             raise ValueError("Cycle in graph Boo hoo go fix it")
         if node_id in visited: 
             return 
-        if not isinstance(node.operands, tuple):
+
+        children = node.children
+        if not isinstance(children, tuple):
             raise TypeError("yo fix ur shit bro keep multiple arguments in a tuple")
         visiting.add(node_id)
-        for operand in circuit_operands(node):
-            visit(operand)
+        for child in children:
+            visit(child)
         visiting.remove(node_id)
         visited.add(node_id)
         
-        is_leaf = node.bit_type in (BitType.VAR, BitType.CONST, BitType.UINT)
-
-        if not is_leaf:
+        if len(children) > 0:
             operation_order.append(node)
 
     visit(node)
