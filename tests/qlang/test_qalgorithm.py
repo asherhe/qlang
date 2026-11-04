@@ -44,3 +44,11 @@ def test_grover_algorithm_no_integer_solution(x, y):
     result = search({"x": range(8), "y": range(5)}, pred)
 
     assert result is None
+
+def test_grover_more_than_two_inputs(x, y, z, a, b, c):
+    pred = x + y * z + a - b + c == 100
+
+    result = search({"x": range(8), "y": range(8), "y": range(8),"z": range(8), "a": range(8), "a": range(8), "b": range(8), "c": range(8)}, pred)
+
+    assert result is not None
+    assert evaluate(pred, result)
