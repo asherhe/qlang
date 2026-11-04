@@ -6,7 +6,7 @@ import operator
 import pytest
 
 from qlang.evaluate import evaluate
-from qlang.expression import BitType, UIntType, const_bit, const_uint
+from qlang.expression import BitType, UIntType, const_bit, const_uint, var_uint
 from qlang.optimize import RulePass, decompose, optimize_expr, run_rule_pass, traverse_transform
 
 
@@ -130,6 +130,31 @@ def test_rewrites_preserve_width_sensitive_parent_semantics(x, y, build, assignm
     expr = build(x, y)
     assert evaluate(expr, assignment) == expected
     assert evaluate(optimize_expr(expr), assignment) == expected
+
+
+def test_add_self_becomes_shifted_bits():
+    node = var_uint("x", 3)
+    result = optimize_expr(node + node)
+    assert result.uint_type == UIntType.BITS
+    assert result.width == 4
+    assert result.bits == (const_bit(0),) + node.bits
+
+
+def test_mul_by_power_of_two_becomes_shifted_bits_padded_to_product_width():
+    node = var_uint("x", 3)
+    expr = node * 4  # constant 4 is 3 bits wide, so the product is 6 bits wide
+    result = optimize_expr(expr)
+    assert result.uint_type == UIntType.BITS
+    assert result.width == expr.width == 6
+    zero = const_bit(0)
+    assert result.bits == (zero, zero) + node.bits + (zero,)
+
+
+def test_constant_shift_truncates_to_shift_node_width_not_operand_width(x, y):
+    # (x + y) - y is 4 bits wide; shifting it left by 3 must keep the carry bit, not drop to 3
+    expr = ((x + y) - y) << 3
+    assert evaluate(expr, {"x": 1, "y": 0}) == 8
+    assert evaluate(optimize_expr(expr), {"x": 1, "y": 0}) == 8
 
 
 def test_optimizer_does_not_mutate_original_expression(x):

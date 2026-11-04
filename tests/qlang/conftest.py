@@ -2,7 +2,7 @@
 
 import pytest
 
-from qlang.expression import ASTNode, Bit, BitType, UInt, UIntType, var_bit
+from qlang.expression import ASTNode, UInt, UIntType, var_bit
 
 
 @pytest.fixture(autouse=True)
@@ -18,11 +18,8 @@ def make_uint():
     # Construct valid AST inputs directly so a factory regression does not hide
     # independent evaluator and optimizer failures. Public factories have tests.
     def make(name="x", width=3):
-        bits = tuple(
-            Bit(bit_type=BitType.VAR, name=name, index=i, parent_width=width)
-            for i in range(width)
-        )
-        return UInt(uint_type=UIntType.VAR, name=name, width=width, bits=bits)
+        # the UInt constructor creates the BitType.UINT bits owned by the node
+        return UInt(uint_type=UIntType.VAR, name=name, width=width)
     return make
 
 
