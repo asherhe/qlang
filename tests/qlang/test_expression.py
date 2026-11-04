@@ -4,7 +4,7 @@ import operator
 
 import pytest
 
-from qlang.expression import Bit, BitType, UInt, UIntType, const_bit, const_uint, uint, var_bit, var_uint
+from qlang.expression import Bit, BitType, UInt, UIntType, bits_uint, const_bit, const_uint, uint, var_bit, var_uint
 
 
 @pytest.mark.parametrize("value,expected", [(0, False), (1, True), (2, True), (False, False), (True, True)])
@@ -118,3 +118,102 @@ def test_leaf_property_and_variable_const_value(x):
     assert not (x + 1).is_leaf
     with pytest.raises(ValueError):
         _ = x.const_value
+
+
+# -------- BitType.UINT / UIntType.BITS --------
+# These build nodes with the public factories and only inspect structure; evaluate() has no
+# BITS/UINT support yet.
+
+def test_new_enum_members_are_distinct_from_existing_ones():
+    assert BitType.UINT not in (BitType.CONST, BitType.VAR)
+    assert UIntType.BITS not in (UIntType.CONST, UIntType.VAR)
+    assert len(set(BitType)) == len(BitType)
+    assert len(set(UIntType)) == len(UIntType)
+
+
+def test_var_uint_creates_one_uint_bit_per_position():
+    node = var_uint("x", 4)
+    assert len(node.bits) == 4
+    for i, bit in enumerate(node.bits):
+        assert bit.bit_type == BitType.UINT
+        assert bit.index == i
+        assert bit.parent_uint is node
+        assert bit.is_leaf
+
+
+def test_uint_bits_are_shared_nodes():
+    node = var_uint("x", 3)
+    assert Bit._create(bit_type=BitType.UINT, index=1, parent_uint=node) is node.bits[1]
+
+
+def test_uint_bits_of_different_parents_are_distinct():
+    assert var_uint("x", 3).bits[0] is not var_uint("y", 3).bits[0]
+
+
+def test_operator_uint_also_owns_its_bits():
+    total = var_uint("x", 3) + var_uint("y", 2)
+    assert len(total.bits) == total.width == 4
+    assert all(b.bit_type == BitType.UINT and b.parent_uint is total for b in total.bits)
+    assert [b.index for b in total.bits] == [0, 1, 2, 3]
+
+
+def test_const_uint_keeps_const_bits():
+    node = const_uint(5, 4)
+    assert all(b.bit_type == BitType.CONST and b.parent_uint is None for b in node.bits)
+
+
+def test_var_bit_is_standalone():
+    bit = var_bit("p")
+    assert bit.bit_type == BitType.VAR
+    assert bit.name == "p"
+    assert bit.index is None
+    assert bit.parent_uint is None
+
+
+def test_bits_uint_builds_bits_node():
+    bits = (const_bit(1), var_bit("p"), const_bit(0))
+    node = bits_uint(bits)
+    assert isinstance(node, UInt)
+    assert node.uint_type == UIntType.BITS
+    assert node.width == 3
+    assert node.bits == bits
+    assert node.is_leaf
+
+
+def test_bits_uint_accepts_bits_owned_by_other_uints():
+    node_x = var_uint("x", 3)
+    node = bits_uint((node_x.bits[2], node_x.bits[0]))
+    assert node.width == 2
+    assert node.bits[0] is node_x.bits[2] and node.bits[1] is node_x.bits[0]
+
+
+def test_bits_uint_works_as_operand():
+    node = bits_uint((const_bit(1), const_bit(0), const_bit(1)))
+    total = node + 1
+    assert total.uint_type == UIntType.ADD
+    assert total.operands[0] is node
+    assert total.width == 4
+
+
+def test_uint_dispatches_tuple_to_bits_uint():
+    bits = (const_bit(1), const_bit(1))
+    node = uint(bits)
+    assert node.uint_type == UIntType.BITS
+    assert node.bits == bits
+
+
+@pytest.mark.parametrize("value", [1.5, None, [const_bit(1)]])
+def test_uint_rejects_unsupported_types(value):
+    with pytest.raises(TypeError):
+        uint(value)
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="BITS nodes are cached by (type, width, operands) and have no operands, so same-width BITS UInts collide",
+)
+def test_bits_uint_with_different_bits_are_distinct_nodes():
+    first = bits_uint((const_bit(1), const_bit(0)))
+    second = bits_uint((var_bit("p"), var_bit("q")))
+    assert first is not second
+    assert second.bits[0].name == "p"
