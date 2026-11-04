@@ -100,38 +100,40 @@ def compile_oracle(expr: Bit) -> Oracle:
     # translate the operation 
     for node_id, node in nodes.items():
         kind = node_type(node)
+        node_qubit = qubit_allocation[node_id]
         if node.is_leaf:
             # initialize |1> CONST bits
             if isinstance(node, Bit) and kind == BitType.CONST and node.value:
-                compute.x(qubit_allocation[id(node)])
+                compute.x(node_qubit)
+        # translate operator nodes
         elif isinstance(node, Bit):
-            op = node.bit_type
-            target_qubit = qubit_allocation[node_id]
+            # check if primitive operator
+            if kind not in (BitType.NOT, BitType.XOR, BitType.AND, BitType.NE, BitType.GT):
+                raise TypeError(f"cannot compile non-primitive bit operator {node}")
 
-            if op in (BitType.NE, BitType.LT):
+            if kind in (BitType.NE, BitType.LT):
                 left, right = comparison_bits(node)
                 left_qubits = [qubit_allocation[id(bit)] for bit in left]
                 right_qubits = [qubit_allocation[id(bit)] for bit in right]
 
-                if op == BitType.NE:
-                    quantumNE(compute, left_qubits, right_qubits, target_qubit, fresh_scratch)
+                if kind == BitType.NE:
+                    quantumNE(compute, left_qubits, right_qubits, node_qubit, fresh_scratch)
                 else:
-                    quantumLT(compute, left_qubits, right_qubits, target_qubit, fresh_scratch)
-
-                continue
-            qubitA = qubit_allocation[id(node.operands[0])]
-            if op == BitType.NOT:
-                quantumNOT(compute, qubitA, target_qubit)
+                    quantumLT(compute, left_qubits, right_qubits, node_qubit, fresh_scratch)
             else:
-                qubitB = qubit_allocation[id(node.operands[1])]
-                if op == BitType.AND:
-                    quantumAND(compute, qubitA, qubitB, target_qubit)
-                elif op == BitType.OR:
-                    quantumOR(compute, qubitA, qubitB, target_qubit)
-                elif op == BitType.XOR:
-                    quantumXOR(compute, qubitA, qubitB, target_qubit)
+                qubitA = qubit_allocation[id(node.operands[0])]
+                if kind == BitType.NOT:
+                    quantumNOT(compute, qubitA, node_qubit)
                 else:
-                    raise ValueError(f"Unsupported operation: {op}")
+                    qubitB = qubit_allocation[id(node.operands[1])]
+                    if kind == BitType.AND:
+                        quantumAND(compute, qubitA, qubitB, node_qubit)
+                    elif kind == BitType.OR:
+                        quantumOR(compute, qubitA, qubitB, node_qubit)
+                    elif kind == BitType.XOR:
+                        quantumXOR(compute, qubitA, qubitB, node_qubit)
+                    else:
+                        raise ValueError(f"Unsupported operation: {kind}")
         elif isinstance(node, UInt):
             raise NotImplementedError
         else:
