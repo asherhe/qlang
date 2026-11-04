@@ -108,10 +108,23 @@ def compile_oracle(expr: Bit) -> Oracle:
         # translate operator nodes
         elif isinstance(node, Bit):
             # check if primitive operator
-            if kind not in (BitType.NOT, BitType.XOR, BitType.AND, BitType.NE, BitType.GT):
+            if kind not in (BitType.NOT, BitType.XOR, BitType.AND, BitType.OR, BitType.NE, BitType.GT):
                 raise TypeError(f"cannot compile non-primitive bit operator {node}")
 
-            if kind in (BitType.NE, BitType.LT):
+            if kind == BitType.NOT:
+                qubitA = qubit_allocation[id(node.operands[0])]
+                quantumNOT(compute, qubitA, node_qubit)
+            elif kind in (BitType.XOR, BitType.AND, BitType.OR):
+                qubitA = qubit_allocation[id(node.operands[0])]
+                qubitB = qubit_allocation[id(node.operands[1])]
+                if kind == BitType.XOR:
+                    quantumXOR(compute, qubitA, qubitB, node_qubit)
+                elif kind == BitType.AND:
+                    quantumAND(compute, qubitA, qubitB, node_qubit)
+                elif kind == BitType.OR:
+                    quantumOR(compute, qubitA, qubitB, node_qubit)
+            elif kind in (BitType.NE, BitType.LT):
+                # comparison operators
                 left, right = comparison_bits(node)
                 left_qubits = [qubit_allocation[id(bit)] for bit in left]
                 right_qubits = [qubit_allocation[id(bit)] for bit in right]
@@ -120,20 +133,7 @@ def compile_oracle(expr: Bit) -> Oracle:
                     quantumNE(compute, left_qubits, right_qubits, node_qubit, fresh_scratch)
                 else:
                     quantumLT(compute, left_qubits, right_qubits, node_qubit, fresh_scratch)
-            else:
-                qubitA = qubit_allocation[id(node.operands[0])]
-                if kind == BitType.NOT:
-                    quantumNOT(compute, qubitA, node_qubit)
-                else:
-                    qubitB = qubit_allocation[id(node.operands[1])]
-                    if kind == BitType.AND:
-                        quantumAND(compute, qubitA, qubitB, node_qubit)
-                    elif kind == BitType.OR:
-                        quantumOR(compute, qubitA, qubitB, node_qubit)
-                    elif kind == BitType.XOR:
-                        quantumXOR(compute, qubitA, qubitB, node_qubit)
-                    else:
-                        raise ValueError(f"Unsupported operation: {kind}")
+
         elif isinstance(node, UInt):
             raise NotImplementedError
         else:
