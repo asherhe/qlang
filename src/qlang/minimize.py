@@ -3,6 +3,8 @@ from .compile import Oracle, compile_oracle, OutputMode
 from .evaluate import evaluate
 
 import numpy as np
+from math import pi
+from itertools import product
 from qiskit_aer import AerSimulator
 from qiskit import QuantumCircuit, ClassicalRegister, transpile
 from qiskit.quantum_info import SparsePauliOp, Statevector
@@ -41,6 +43,22 @@ def mean_cost(angles):
     return float(state.expectation_value(cost_operator).real)
 
 print(mean_cost((0.0, 0.0)))
+
+grid = [i * pi / 16 for i in range(32)]
+best_angles = min(product(grid, repeat=2), key=mean_cost)
+print(best_angles, mean_cost(best_angles))
+
+# prepare circuit at best angles and sample output
+state = state_at(*best_angles)
+state.seed(42)
+counts = state.sample_counts(1024)
+
+# reverse the order of the bits in counts, which begins in MSB from qiskit
+cost_dict = {(0, 0): 3, (0, 1): 0, (1, 0): 1, (1, 1): 4}
+observed = [(int(bits[-1]), int(bits[-2])) for bits in counts]
+
+best_assignment = min(observed, key=cost_dict.__getitem__)
+print(best_assignment, cost_dict[best_assignment])
 
 a, b = var_bit("a"), var_bit("b")
 
