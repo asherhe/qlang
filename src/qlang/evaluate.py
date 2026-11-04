@@ -4,41 +4,41 @@ from .expression import ASTNode, Bit, BitType, UInt, UIntType, node_type
 
 # assumes that types not CONST or VAR are valid to recurse through
 def _var_checker(
-    nodes: tuple[ASTNode, ...],
+    node: ASTNode,
     assignments: dict[str, int | bool],
 ) -> None: 
-    for node in nodes: 
-        type = node_type(node)
-        if type in (BitType.VAR, UIntType.VAR): 
-            if node.name not in assignments: 
-                raise ValueError(f"variable '{node.name}' is not assigned")
-            value = assignments[node.name]
-            if isinstance(node, UInt):
-                if not isinstance(value, int): 
-                    raise ValueError(f"assignment value '{node.name}' must be an integer")
-                if value < 0: 
-                    raise ValueError(f"assignment value '{node.name}' must be non-negative")
-                elif isinstance(node, UInt) and value >= (1 << node.width): 
-                    raise ValueError(f"assignment value '{node.name}' cannot be larger than width")
-            elif isinstance(node, Bit):
-                if not isinstance(value, (int, bool)):
-                    raise ValueError(f"assignment value of bit '{node.name}' must be a boolean or integer")
-        elif isinstance(node, Bit) and node.bit_type == BitType.CONST: 
-            if node.value is None: 
-                raise ValueError("const Bit has missing value")
-        elif isinstance(node, UInt) and node.uint_type == UIntType.CONST: 
-            if not node.bits: 
-                raise ValueError("const UInt has missing bits")
-            if not all(b.bit_type == BitType.CONST for b in node.bits):
-                raise ValueError("const UInt cannot contain var Bit")
-            if not all(isinstance(b.value, bool) for b in node.bits): 
-                raise ValueError("const Bit as part of const UInt has missing value")
+    type = node_type(node)
+    if type in (BitType.VAR, UIntType.VAR): 
+        if node.name not in assignments: 
+            raise ValueError(f"variable '{node.name}' is not assigned")
+        value = assignments[node.name]
+        if isinstance(node, UInt):
+            if not isinstance(value, int): 
+                raise ValueError(f"assignment value '{node.name}' must be an integer")
+            if value < 0: 
+                raise ValueError(f"assignment value '{node.name}' must be non-negative")
+            elif isinstance(node, UInt) and value >= (1 << node.width): 
+                raise ValueError(f"assignment value '{node.name}' cannot be larger than width")
+        elif isinstance(node, Bit):
+            if not isinstance(value, (int, bool)):
+                raise ValueError(f"assignment value of bit '{node.name}' must be a boolean or integer")
+    elif isinstance(node, Bit) and node.bit_type == BitType.CONST: 
+        if node.value is None: 
+            raise ValueError("const Bit has missing value")
+    elif isinstance(node, UInt) and node.uint_type == UIntType.CONST: 
+        if not node.bits: 
+            raise ValueError("const UInt has missing bits")
+        if not all(b.bit_type == BitType.CONST for b in node.bits):
+            raise ValueError("const UInt cannot contain var Bit")
+        if not all(isinstance(b.value, bool) for b in node.bits): 
+            raise ValueError("const Bit as part of const UInt has missing value")
 
 # prereq: assignments are available for VARs 
 def _get_value(
     node: ASTNode,
     assignments: dict[str, int | bool],
 ) -> int | bool:
+    _var_checker(node, assignments)
     if isinstance(node, Bit):       # not actually that necessary but for intellisense polymorphism
         if type == BitType.VAR:
             return bool(assignments[cast(str, node.name)])
@@ -77,7 +77,6 @@ def _bitwise_only_op(
     b1, b2 = node.operands[0], node.operands[1]   # not node.operands[:2] because intellisense can't do polymorphism
     if not isinstance(b1, Bit) or not isinstance(b2, Bit): 
         raise ValueError(f"{name} cannot be applied to a type other than Bit")
-    _var_checker((b1, b2), assignments)
     if b1.bit_type not in (BitType.VAR, BitType.CONST): 
         b1v = _evaluate(b1, assignments, memo)
     else: 
@@ -104,7 +103,6 @@ def _comparison_op(
         raise ValueError("this op cannot be applied to a type other than Bit")
     type = node.bit_type
     u1, u2 = node.operands[0], node.operands[1]
-    _var_checker((u1, u2), assignments)
     if node_type(u1) not in (BitType.VAR, BitType.CONST, UIntType.VAR, UIntType.CONST):
         u1v = _evaluate(u1, assignments, memo)
     else: 
@@ -154,7 +152,6 @@ def _int_only_op(
     u1, u2 = node.operands[0], node.operands[1]
     if not isinstance(u1, UInt) or not isinstance(u2, UInt): 
         raise ValueError(f"{name} cannot be applied to a type other than UInt")
-    _var_checker((u1, u2), assignments)
     if node_type(u1) not in (UIntType.VAR, UIntType.CONST):
         u1v = _evaluate(u1, assignments, memo)
     else: 
@@ -186,7 +183,6 @@ def _evaluate_uncached(
     if isinstance(node, Bit): 
         bit_type = node.bit_type
         if bit_type in (BitType.CONST, BitType.VAR):
-            _var_checker((node,), assignments)
             return _get_value(node, assignments)
         if bit_type == BitType.UINT:
             index = cast(int, node.index)
@@ -201,7 +197,6 @@ def _evaluate_uncached(
             b = node.operands[0]
             if not isinstance(b, Bit): 
                 raise ValueError("NOT cannot be applied to a type other than Bit")
-            _var_checker((b,), assignments)
             if b.bit_type in (BitType.VAR, BitType.CONST): 
                 return not _get_value(b, assignments)
             return not _evaluate(b, assignments, memo)
@@ -215,7 +210,6 @@ def _evaluate_uncached(
     if isinstance(node, UInt): 
         uint_type = node.uint_type
         if uint_type in (BitType.CONST, BitType.VAR):
-            _var_checker((node,), assignments)
             return _get_value(node, assignments)
         if uint_type == BitType.UINT:
             bits = (_evaluate(b, assignments, memo) for b in node.bits)
