@@ -1,14 +1,6 @@
 from typing import cast
 
-from .expression import ASTNode, Bit, BitType, UInt, UIntType
-
-
-def _get_type(node: ASTNode): 
-    if isinstance(node, Bit): 
-        return node.bit_type
-    if isinstance(node, UInt): 
-        return node.uint_type
-    return NotImplemented
+from .expression import ASTNode, Bit, BitType, UInt, UIntType, node_type
 
 # assumes that types not CONST or VAR are valid to recurse through
 def _var_checker(
@@ -16,7 +8,7 @@ def _var_checker(
     assignments: dict[str, int | bool],
 ) -> None: 
     for node in nodes: 
-        type = _get_type(node)
+        type = node_type(node)
         if type in (BitType.VAR, UIntType.VAR): 
             if node.name not in assignments: 
                 raise ValueError(f"variable '{node.name}' is not assigned")
@@ -51,7 +43,7 @@ def _get_values(
 ) -> tuple[int | bool, ...]: 
     values = ()
     for node in nodes: 
-        type = _get_type(node)
+        type = node_type(node)
         if isinstance(node, Bit):       # not actually that necessary but for intellisense polymorphism
             if type == BitType.VAR:
                 value = assignments[cast(str, node.name)]
@@ -124,11 +116,11 @@ def _comparison_op(
     type = node.bit_type
     u1, u2 = node.operands[0], node.operands[1]
     _var_checker((u1, u2), assignments)
-    if _get_type(u1) not in (BitType.VAR, BitType.CONST, UIntType.VAR, UIntType.CONST):
+    if node_type(u1) not in (BitType.VAR, BitType.CONST, UIntType.VAR, UIntType.CONST):
         u1v = _evaluate(u1, assignments, memo)
     else: 
         u1v = _get_values((u1,), assignments)[0]
-    if _get_type(u2) not in (BitType.VAR, BitType.CONST, UIntType.VAR, UIntType.CONST): 
+    if node_type(u2) not in (BitType.VAR, BitType.CONST, UIntType.VAR, UIntType.CONST): 
         u2v = _evaluate(u2, assignments, memo)
     else: 
         u2v = _get_values((u2,), assignments)[0]
@@ -174,11 +166,11 @@ def _int_only_op(
     if not isinstance(u1, UInt) or not isinstance(u2, UInt): 
         raise ValueError(f"{name} cannot be applied to a type other than UInt")
     _var_checker((u1, u2), assignments)
-    if _get_type(u1) not in (UIntType.VAR, UIntType.CONST):
+    if node_type(u1) not in (UIntType.VAR, UIntType.CONST):
         u1v = _evaluate(u1, assignments, memo)
     else: 
         u1v = _get_values((u1,), assignments)[0]
-    if _get_type(u2) not in (UIntType.VAR, UIntType.CONST): 
+    if node_type(u2) not in (UIntType.VAR, UIntType.CONST): 
         u2v = _evaluate(u2, assignments, memo)
     else: 
         u2v = _get_values((u2,), assignments)[0]
@@ -204,7 +196,7 @@ def _evaluate_uncached(
 ) -> int | bool: 
     if not node.operands:  # leaf node
         _var_checker((node,), assignments)
-        if _get_type(node) not in (BitType.CONST, BitType.VAR, UIntType.CONST, UIntType.VAR): 
+        if node_type(node) not in (BitType.CONST, BitType.VAR, UIntType.CONST, UIntType.VAR): 
             raise ValueError("operator node must have operands")
         return _get_values((node,), assignments)[0]
     else:                  # operators

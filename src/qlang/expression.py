@@ -405,6 +405,14 @@ class UInt(ASTNode):
             text = f" op{UINT_OPS[self.uint_type]}"
         return f"<UInt{text} ({self.width}-bit)>"
 
+def node_type(expr: ASTNode) -> BitType | UIntType:
+    """the BitType or UIntType of a Bit or UInt node"""
+    if isinstance(expr, Bit):
+        return expr.bit_type
+    elif isinstance(expr, UInt):
+        return expr.uint_type
+    raise TypeError("only ASTNodes of type Bit and UInt are supported")
+
 # -------- factory functions --------
 
 def const_bit(value: int | bool) -> Bit:

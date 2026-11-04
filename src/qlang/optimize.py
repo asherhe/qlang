@@ -1,4 +1,4 @@
-from .expression import ASTNode, BitType, UIntType, Bit, UInt, bits_uint, const_bit, const_uint
+from .expression import ASTNode, BitType, UIntType, Bit, UInt, bits_uint, const_bit, const_uint, node_type
 from collections import defaultdict
 from operator import add, attrgetter, mul
 from typing import Any, Callable, cast
@@ -35,13 +35,6 @@ class RulePass:
     def rules_for(self, t: NodeType) -> list[RuleFn]:
         """the rules registered for a node type, in registration order"""
         return self.table.get((type(t), t), [])
-
-def node_type(expr: ASTNode) -> NodeType:
-    if isinstance(expr, Bit):
-        return expr.bit_type
-    elif isinstance(expr, UInt):
-        return expr.uint_type
-    raise TypeError("only ASTNodes of type Bit and UInt are supported")
 
 def rebuild(expr: ASTNode, operands: tuple[ASTNode, ...]) -> ASTNode:
     """reconstruct an expression with new operands"""
