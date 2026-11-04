@@ -9,6 +9,14 @@ from .evaluate import evaluate
 from qiskit_aer import AerSimulator
 from qiskit import QuantumCircuit, ClassicalRegister, transpile
 
+import math
+
+# compute the optimal k based on the formula
+def _optimal_k(num_input_qubits: int, num_solutions: int = 1) -> int:
+    N = 2 ** num_input_qubits
+    theta = math.asin(math.sqrt(num_solutions / N))
+    return max(0, round(math.pi / (4 * theta) - 0.5))
+
 def _phase_oracle(
     oracle: Oracle 
 ) -> QuantumCircuit:
@@ -105,8 +113,7 @@ def _grover_circuit(
 
 def search(
     params: dict[str, Iterable[int]],
-    pred: Bit, # expression tree for the condition
-    k: int
+    pred: Bit # expression tree for the condition
 ) -> dict[str, int] | None:
     """
     search for solutions in the space of params that satisfy pred
@@ -123,14 +130,19 @@ def search(
 
     oracle = compile_oracle(pred)
 
+    k = k = _optimal_k(sum(len(q) for q in oracle.inputs.values()))
+
+    # inputs: the sum of the variables' binary width
     circuit, inputs = _grover_circuit(oracle, k=k)
 
+    # add classical bits to the circuit to store the results
     measured = ClassicalRegister(len(inputs), "measured")
     circuit.add_register(measured)
 
     for index, qubit in enumerate(inputs):
         circuit.measure(qubit, measured[index])
 
+    #run the quantum simulation on a classical computer's CPU
     simulator = AerSimulator()
     execuble = transpile(circuit, simulator)
     result = simulator.run(execuble, shots=1024).result()
@@ -152,6 +164,7 @@ def search(
         for name, qubits in oracle.inputs.items():
             value = 0
 
+            # decode: turn bits in decimals
             for bit_index, qubit in enumerate(qubits):
                 bit = measured_by_qubit[qubit]
                 value += bit * (2 ** bit_index)
@@ -168,7 +181,7 @@ def search(
         if not valid:
             continue
 
-        if not evaluate(pred, assignment):
+        if evaluate(pred, assignment):
             return assignment
 
     return None
