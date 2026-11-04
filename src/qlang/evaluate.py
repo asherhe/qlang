@@ -35,31 +35,26 @@ def _var_checker(
                 raise ValueError("const Bit as part of const UInt has missing value")
 
 # prereq: assignments are available for VARs 
-def _get_values(
-    nodes: tuple[ASTNode, ...], 
+def _get_value(
+    node: ASTNode,
     assignments: dict[str, int | bool],
-) -> tuple[int | bool, ...]: 
-    values = ()
-    for node in nodes: 
-        type = node_type(node)
-        if isinstance(node, Bit):       # not actually that necessary but for intellisense polymorphism
-            if type == BitType.VAR:
-                value = bool(assignments[cast(str, node.name)])
-                values += (value,)
-            elif type == BitType.CONST: 
-                values += (cast(bool, node.value),)
-            else: 
-                return NotImplemented
-        elif isinstance(node, UInt): 
-            if type == UIntType.VAR: 
-                values += (assignments[cast(str, node.name)],)
-            elif type == UIntType.CONST: 
-                values += (sum(cast(bool, b.value) * (1<<i) for i, b in enumerate(node.bits)),)
-            else: 
-                return NotImplemented
+) -> int | bool:
+    if isinstance(node, Bit):       # not actually that necessary but for intellisense polymorphism
+        if type == BitType.VAR:
+            return bool(assignments[cast(str, node.name)])
+        elif type == BitType.CONST: 
+            return cast(bool, node.value)
         else: 
             return NotImplemented
-    return values
+    elif isinstance(node, UInt): 
+        if type == UIntType.VAR: 
+            return assignments[cast(str, node.name)]
+        elif type == UIntType.CONST: 
+            return sum(cast(bool, b.value) * (1<<i) for i, b in enumerate(node.bits))
+        else: 
+            return NotImplemented
+    else: 
+        return NotImplemented
 
 # XOR, AND, OR
 def _bitwise_only_op(
@@ -86,11 +81,11 @@ def _bitwise_only_op(
     if b1.bit_type not in (BitType.VAR, BitType.CONST): 
         b1v = _evaluate(b1, assignments, memo)
     else: 
-        b1v = _get_values((b1,), assignments)[0]
+        b1v = _get_value(b1, assignments)
     if b2.bit_type not in (BitType.VAR, BitType.CONST): 
         b2v = _evaluate(b2, assignments, memo)
     else: 
-        b2v = _get_values((b2,), assignments)[0]
+        b2v = _get_value(b2, assignments)
     match type: 
         case BitType.XOR: 
             return b1v ^ b2v
@@ -113,11 +108,11 @@ def _comparison_op(
     if node_type(u1) not in (BitType.VAR, BitType.CONST, UIntType.VAR, UIntType.CONST):
         u1v = _evaluate(u1, assignments, memo)
     else: 
-        u1v = _get_values((u1,), assignments)[0]
+        u1v = _get_value(u1, assignments)
     if node_type(u2) not in (BitType.VAR, BitType.CONST, UIntType.VAR, UIntType.CONST): 
         u2v = _evaluate(u2, assignments, memo)
     else: 
-        u2v = _get_values((u2,), assignments)[0]
+        u2v = _get_value(u2, assignments)
     match type: 
         case BitType.EQ: 
             return u1v == u2v
@@ -163,11 +158,11 @@ def _int_only_op(
     if node_type(u1) not in (UIntType.VAR, UIntType.CONST):
         u1v = _evaluate(u1, assignments, memo)
     else: 
-        u1v = _get_values((u1,), assignments)[0]
+        u1v = _get_value(u1, assignments)
     if node_type(u2) not in (UIntType.VAR, UIntType.CONST): 
         u2v = _evaluate(u2, assignments, memo)
     else: 
-        u2v = _get_values((u2,), assignments)[0]
+        u2v = _get_value(u2, assignments)
     match type: 
         case UIntType.ADD: 
             return u1v + u2v
@@ -192,7 +187,7 @@ def _evaluate_uncached(
         bit_type = node.bit_type
         if bit_type in (BitType.CONST, BitType.VAR):
             _var_checker((node,), assignments)
-            return _get_values((node,), assignments)[0]
+            return _get_value(node, assignments)
         if bit_type == BitType.UINT:
             index = cast(int, node.index)
             uint = cast(UInt, node.parent_uint)
@@ -208,7 +203,7 @@ def _evaluate_uncached(
                 raise ValueError("NOT cannot be applied to a type other than Bit")
             _var_checker((b,), assignments)
             if b.bit_type in (BitType.VAR, BitType.CONST): 
-                return not _get_values((b,), assignments)[0]
+                return not _get_value(b, assignments)
             return not _evaluate(b, assignments, memo)
         if len(node.operands) != 2: 
             raise ValueError("binary operations must have exactly two operands")
@@ -221,7 +216,7 @@ def _evaluate_uncached(
         uint_type = node.uint_type
         if uint_type in (BitType.CONST, BitType.VAR):
             _var_checker((node,), assignments)
-            return _get_values((node,), assignments)[0]
+            return _get_value(node, assignments)
         if uint_type == BitType.UINT:
             bits = (_evaluate(b, assignments, memo) for b in node.bits)
             return sum(int(b) << i for i, b in enumerate(bits))
