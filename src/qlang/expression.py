@@ -54,6 +54,12 @@ class ASTNode:
     # registry of all named variables
     variables: ClassVar[dict[str, ASTNode]] = {}
 
+    @classmethod
+    def reset(cls):
+        """reset ASTNode cache and variable table"""
+        cls.cache = {}
+        cls.variables = {}
+
     @property
     def is_leaf(self) -> bool:
         """whether this ASTNode has no children"""
