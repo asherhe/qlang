@@ -9,6 +9,9 @@ class BitType(IntEnum):
     CONST = 1
     VAR = 2
 
+    # this bit is part of a UInt object
+    UINT = auto()
+
     # operators
     NOT = auto()
     XOR = auto()
@@ -25,6 +28,9 @@ class UIntType(IntEnum):
     # leaf nodes
     CONST = 1
     VAR = 2
+    
+    # constructed from other bits
+    BITS = auto()
 
     # operators
     ADD = auto()
@@ -53,7 +59,7 @@ class ASTNode:
     @classmethod
     def _get_cache_key(cls, **kwargs) -> tuple[Any, ...]:
         """
-        unique identifie for this ASTNode, implemented by subclassed types
+        unique identifier for this ASTNode, implemented by subclassed types
         """
         raise NotImplementedError
 
@@ -88,8 +94,8 @@ class Bit(ASTNode):
     value: bool | None
     # if a variable bit, maps back to the Bit's index in the containing UInt if it exists
     index: int | None
-    # used for validation if this belongs to a UInt
-    parent_width: int | None
+    # reference to the UInt that owns this Bit, for type BitType.UINT
+    parent_uint: UInt | None
 
     def __init__(
         self, 
@@ -98,14 +104,14 @@ class Bit(ASTNode):
         name: str | None = None, 
         value: bool | None = None, 
         index: int | None = None,
-        parent_width: int | None = None,
+        parent_uint: UInt | None = None,
         operands: tuple[ASTNode, ...] = (),
     ): 
         self.bit_type = bit_type
         self.name = name
         self.value = value
         self.index = index
-        self.parent_width = parent_width
+        self.parent_uint = parent_uint
         self.operands = operands
 
     @classmethod
@@ -116,14 +122,16 @@ class Bit(ASTNode):
         name: str | None = None, 
         value: bool | None = None, 
         index: int | None = None,
-        parent_width: int | None = None,
+        parent_uint: UInt | None = None,
         operands: tuple[ASTNode, ...] = (),
         **kwargs
    ) -> tuple[Any, ...]:
         if bit_type == BitType.CONST:
             return (bit_type, value)
         elif bit_type == BitType.VAR:
-            return (bit_type, name, index, parent_width)
+            return (bit_type, name, index, id(parent_uint))
+        elif bit_type == BitType.UINT:
+            return (bit_type, index, id(parent_uint))
         else:
             operand_ids = tuple(id(o) for o in operands)
             return (bit_type, operand_ids)
@@ -185,6 +193,30 @@ class Bit(ASTNode):
     def __le__(self, other): 
         return Bit._operator(BitType.LE, self=self, other=other)
 
+    def __repr__(self):
+        text = " "
+        if self.bit_type == BitType.CONST:
+            text = f" {1 if self.value else 0}"
+        elif self.bit_type == BitType.VAR:
+            text = f" {self.name}"
+        elif self.bit_type == BitType.UINT:
+            text = f" {self.parent_uint}[{self.index}]" 
+        else:
+            BIT_OPS = {
+                BitType.NOT: "~",
+                BitType.XOR: "^",
+                BitType.AND: "&",
+                BitType.OR: "|",
+                BitType.EQ: "==",
+                BitType.NE: "!=",
+                BitType.GT: ">",
+                BitType.LT: "<",
+                BitType.GE: ">=",
+                BitType.LE: "<=",
+            }
+            text = f" op{BIT_OPS[self.bit_type]}"
+        return f"<Bit{text}>"
+
 class UInt(ASTNode):
     """
     a wrapper for a sequence of Bits that together represent an integer
@@ -215,6 +247,21 @@ class UInt(ASTNode):
         self.bits = bits
         self.operands = operands
 
+        if uint_type not in (UIntType.CONST, UIntType.BITS):
+            if uint_type == UIntType.VAR:
+                self.bits = tuple(Bit._create(
+                    bit_type=BitType.UINT,
+                    name=name,
+                    index=i,
+                    parent_uint=self,
+                ) for i in range(width))
+            else:
+                self.bits = tuple(Bit._create(
+                    bit_type=BitType.UINT,
+                    index=i,
+                    parent_uint=self
+                ) for i in range(width))
+
     @classmethod
     def _get_cache_key(
         cls,
@@ -226,7 +273,7 @@ class UInt(ASTNode):
         operands: tuple[ASTNode, ...] = (),
         **kwargs
    ) -> tuple[Any, ...]:
-        if uint_type == UIntType.CONST:
+        if uint_type in (UIntType.CONST, UIntType.BITS):
             bit_ids = tuple(id(b) for b in bits)
             return (uint_type, width, bit_ids)
         elif uint_type == UIntType.VAR:
@@ -323,6 +370,48 @@ class UInt(ASTNode):
 
     def __rrshift__(self, other): 
         return UInt._operator(UIntType.RSHIFT, self=other, other=self)
+    
+    def __repr__(self):
+        text = ""
+        if self.uint_type == UIntType.CONST:
+            text = f" {self.const_value}"
+        elif self.uint_type == UIntType.VAR:
+            text = f" {self.name}"
+        elif self.uint_type == UIntType.BITS:
+            chars = "abcdefghijklmnopqrstuvwxyz"
+            # id(bit) -> index
+            sources: dict[int, int] = {}
+            for bit in self.bits:
+                if bit.bit_type == BitType.CONST:
+                    text += "1" if bit.value else "0"
+                else:
+                    bit_id = id(bit)
+                    if bit.bit_type == BitType.UINT:
+                        bit_id = id(bit.parent_uint)
+
+                    if bit_id not in sources:
+                        sources[bit_id] = len(sources)
+                    text += chars[sources[bit_id]]
+            text = f" {text[::-1]}"
+            
+        else:
+            UINT_OPS = {
+                UIntType.ADD: "+",
+                UIntType.SUB: "-",
+                UIntType.MUL: "*",
+                UIntType.LSHIFT: "<<",
+                UIntType.RSHIFT: ">>",
+            }
+            text = f" op{UINT_OPS[self.uint_type]}"
+        return f"<UInt{text} ({self.width}-bit)>"
+
+def node_type(expr: ASTNode) -> BitType | UIntType:
+    """the BitType or UIntType of a Bit or UInt node"""
+    if isinstance(expr, Bit):
+        return expr.bit_type
+    elif isinstance(expr, UInt):
+        return expr.uint_type
+    raise TypeError("only ASTNodes of type Bit and UInt are supported")
 
 # -------- factory functions --------
 
@@ -336,22 +425,13 @@ def const_bit(value: int | bool) -> Bit:
         value=value,
     )
 
-def var_bit(name: str, index: int | None = None, parent_width: int | None = None) -> Bit:
+def var_bit(name: str) -> Bit:
     """
-    create a named variable Bit node. optional index and parent width fields for Bits that are part of a UInt
+    create a named variable Bit.
     """
-    if parent_width: 
-        if parent_width <= 0: 
-            raise ValueError("specified parent width must be positive")
-        if index is None: 
-            raise ValueError("index must be present if parent width is present")
-        if index < 0 or index >= parent_width: 
-            raise ValueError("index is out of bounds compared to parent width") 
     return Bit._create(
         bit_type=BitType.VAR,
         name=name,
-        index=index,
-        parent_width=parent_width,
     )
 
 def const_uint(value: int, width: int | None = None) -> UInt:
@@ -376,70 +456,47 @@ def var_uint(name: str, width: int) -> UInt:
     """create a variable UInt"""
     if width <= 0: 
         raise ValueError("specified width must be positive")
-    bits = tuple(var_bit(name, i, parent_width=width) for i in range(width))
     return UInt._create(
         uint_type=UIntType.VAR,
         width=width,
         name=name,
+    )
+
+def bits_uint(bits: tuple[Bit, ...]) -> UInt:
+    """group a sequence of bits together into a UInt. LSB goes first"""
+
+    return UInt._create(
+        uint_type=UIntType.BITS,
+        width=len(bits),
         bits=bits,
     )
 
-def uint(val: int | str, width: int | None = None) -> UInt:
+def uint(val: int | str | tuple[Bit, ...], width: int | None = None) -> UInt:
     """
     general factory for UInts, delegate to const_uint or var_uint depending on the type of val
     """
     if isinstance(val, int):
         return const_uint(val, width)
-    else:
+    elif isinstance(val, str):
         if width is None:
             raise ValueError(f"uint({val}): variable UInts require a width")
         return var_uint(val, width)
+    elif isinstance(val, tuple):
+        return bits_uint(val)
+    else:
+        raise TypeError(f"type {type(val)} not supported for uint() cretaion")
 
 def print_ast(expr: ASTNode, prefix="", is_tail=True):
     connector = "└─" if is_tail else "├─"
 
-    text = ""
-    if isinstance(expr, Bit):
-        if expr.bit_type == BitType.CONST:
-            text = f"Bit {1 if expr.value else 0}"
-        elif expr.bit_type == BitType.VAR:
-            idx_str = f"[{expr.index}]" if expr.index else ""
-            text = f"Bit {expr.name}{idx_str}"
-        else:
-            BIT_OPS = {
-                BitType.NOT: "~",
-                BitType.XOR: "^",
-                BitType.AND: "&",
-                BitType.OR: "|",
-                BitType.EQ: "==",
-                BitType.NE: "!=",
-                BitType.GT: ">",
-                BitType.LT: "<",
-                BitType.GE: ">=",
-                BitType.LE: "<=",
-            }
-            text = f"Bit op{BIT_OPS[expr.bit_type]}"
-    elif isinstance(expr, UInt):
-        if expr.uint_type == UIntType.CONST:
-            text = f"UInt {expr.const_value}"
-        elif expr.uint_type == UIntType.VAR:
-            text = f"UInt {expr.name}"
-        else:
-            UINT_OPS = {
-                UIntType.ADD: "+",
-                UIntType.MUL: "*",
-                UIntType.LSHIFT: "<<",
-                UIntType.RSHIFT: ">>",
-            }
-            text = f"UInt op{UINT_OPS[expr.uint_type]}"
-        text = f"{text} ({expr.width}-bit)"
-
-    print(f"{prefix}{connector}{text}")
+    print(f"{prefix}{connector}{expr}")
 
     if expr.is_leaf:
         return
 
     extension = "  " if is_tail else "│ "
+    
+    children = []
     for i, child in enumerate(expr.operands):
         print_ast(child, prefix + extension, i == len(expr.operands) - 1)
 
