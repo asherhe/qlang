@@ -50,6 +50,7 @@ def compile_oracle(expr: Bit) -> Oracle:
     nodes: dict[int, ASTNode] = {id(node): node for node in parse_input(expr)}
 
     qubit_allocation: dict[int, int] = {}  # id -> qubit index
+    uint_qubits: dict[int, list[int]] = {}       # id -> qubits
     inputs: dict[str, list[int]] = {}      # input name -> qubit indices
     clean_ancillas: list[int] = []         # list[qubit id]
     qubit_label = 0
@@ -71,8 +72,11 @@ def compile_oracle(expr: Bit) -> Oracle:
             if kind == UIntType.VAR:
                 inputs[cast(str, node.name)] = []
             # BITS uints do not own their own bits
-            if kind != UIntType.BITS:
+            if kind == UIntType.BITS:
+                uint_qubits[id(node)] = [qubit_allocation[id(b)] for b in node.bits]
+            else:
                 bits = node.bits
+                uint_qubits[id(node)] = []
 
         for bit in bits:
             qubit_allocation[id(bit)] = qubit_label
@@ -92,6 +96,11 @@ def compile_oracle(expr: Bit) -> Oracle:
                 case _:
                     # all other (bit operators) - mark as ancilla bit
                     clean_ancillas.append(qubit_label)
+
+            # current node is always the parent
+            if is_uint:
+                uint_qubits[node_id].append(qubit_label)
+
             qubit_label += 1
 
     if id(expr) in clean_ancillas:
@@ -144,7 +153,9 @@ def compile_oracle(expr: Bit) -> Oracle:
                     quantumLT(compute, left_qubits, right_qubits, node_qubit, fresh_scratch)
 
         elif isinstance(node, UInt):
-            raise NotImplementedError
+            # check if primitive operator
+            if kind not in (UIntType.ADD,):
+                raise TypeError(f"cannot compile non-primitive bit operator {node}")
         else:
             raise TypeError(f"compilation of {type(node)} nodes not supported")
 
