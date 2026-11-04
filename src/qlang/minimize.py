@@ -19,10 +19,28 @@ cost_operator = SparsePauliOp.from_list([
 # one round of cost and mixing
 ansatz = QAOAAnsatz(cost_operator, reps=1, flatten=True)
 
-# get Parameter objects to bind angles by name
+# get Parameter objects to bind angles by name 
 parameters = {parameter.name: parameter for parameter in ansatz.parameters}
-beta = parameters["β[0]"]
-gamma = parameters["γ[0]"]
+beta_param = parameters["β[0]"]
+gamma_param = parameters["γ[0]"]
+
+# returns a quantum statevector resulting from applying the ansatz with params
+def state_at(beta, gamma) -> Statevector: 
+    # binds β[0] to the value of beta
+    bound = ansatz.assign_parameters({
+        beta_param: beta, 
+        gamma_param: gamma,
+    }, inplace=False)
+    if bound is None: 
+        raise RuntimeError("expected parameter binding to return a new circuit")
+    return Statevector.from_instruction(bound)
+
+# sum(P(a, b) * C(a, b))
+def mean_cost(angles): 
+    state = state_at(*angles)
+    return float(state.expectation_value(cost_operator).real)
+
+print(mean_cost((0.0, 0.0)))
 
 a, b = var_bit("a"), var_bit("b")
 
