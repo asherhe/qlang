@@ -194,10 +194,6 @@ def test_uint_rejects_unsupported_types(value):
         uint(value)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="BITS nodes are cached by (type, width, operands) and have no operands, so same-width BITS UInts collide",
-)
 def test_bits_uint_with_different_bits_are_distinct_nodes():
     first = bits_uint((const_bit(1), const_bit(0)))
     second = bits_uint((var_bit("p"), var_bit("q")))

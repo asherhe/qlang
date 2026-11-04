@@ -442,7 +442,7 @@ def coll_LSHIFT_overshift(expr: UInt, a: UInt, b: UInt):
 def coll_LSHIFT_const_route(expr: UInt, a: UInt, b: UInt):
     """hard-code a << c when c is constant"""
     if b.uint_type == UIntType.CONST:
-        bits = (0,) * b.const_value + a.bits
+        bits = (const_bit(0),) * b.const_value + a.bits
         bits = bits[:a.width]
         return bits_uint(bits)
 
@@ -485,7 +485,7 @@ def coll_RSHIFT_overshift(expr: UInt, a: UInt, b: UInt):
 def coll_RSHIFT_const_route(expr: UInt, a: UInt, b: UInt):
     """hard-code a >> c when c is constant"""
     if b.uint_type == UIntType.CONST:
-        bits = a.bits + (0,) * b.const_value
+        bits = a.bits + (const_bit(0),) * b.const_value
         bits = bits[-a.width:]
         return bits_uint(bits)
 

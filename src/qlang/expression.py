@@ -273,7 +273,7 @@ class UInt(ASTNode):
         operands: tuple[ASTNode, ...] = (),
         **kwargs
    ) -> tuple[Any, ...]:
-        if uint_type == UIntType.CONST:
+        if uint_type in (UIntType.CONST, UIntType.BITS):
             bit_ids = tuple(id(b) for b in bits)
             return (uint_type, width, bit_ids)
         elif uint_type == UIntType.VAR:
