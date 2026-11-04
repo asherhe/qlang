@@ -30,7 +30,15 @@ def test_grover_algorithm_subtraction_condition(x, y):
     assert result is not None
     assert evaluate(pred, result)
 
-def test_grover_algorithmno_integer_solution(x, y):
+def test_grover_algorithm_multiplication_condition(x, y): 
+    pred = x * y == 6
+
+    result = search({"x": range(2), "y": range(3)}, pred)
+
+    assert result is not None
+    assert evaluate(pred, result)
+
+def test_grover_algorithm_no_integer_solution(x, y):
     pred = 3 * x * y == 5
 
     result = search({"x": range(8), "y": range(5)}, pred)
