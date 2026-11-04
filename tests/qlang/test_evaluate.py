@@ -7,7 +7,7 @@ import operator
 import pytest
 
 from qlang.evaluate import evaluate
-from qlang.expression import Bit, BitType, UInt, UIntType, const_bit, const_uint, var_bit
+from qlang.expression import Bit, BitType, UInt, UIntType, const_bit, const_uint
 
 
 @pytest.mark.parametrize("value", [False, True])
@@ -110,11 +110,6 @@ def test_standalone_bits_normalize_without_mutating(p, value, expected):
     assignments = {"p": value}
     assert evaluate(p, assignments) is expected
     assert assignments == {"p": value}
-
-
-def test_missing_indexed_parent_metadata_is_clear_error():
-    with pytest.raises(ValueError, match="parent width"):
-        evaluate(var_bit("x", index=1), {"x": 1})
 
 
 @pytest.mark.parametrize("kind,operands", [(BitType.NOT, ()), (BitType.NOT, (True, True)), (BitType.AND, (True,)), (BitType.AND, (True, True, True))])

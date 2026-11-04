@@ -37,7 +37,7 @@ def test_public_variable_factory_supports_bit_zero():
     assert node.name == "x"
     assert node.width == 3
     assert [b.index for b in node.bits] == [0, 1, 2]
-    assert all(b.name == "x" and b.parent_width == 3 for b in node.bits)
+    assert all(b.bit_type == BitType.UINT and b.parent_uint is node for b in node.bits)
 
 
 def test_uint_dispatches_variable_factory():
@@ -55,17 +55,6 @@ def test_invalid_variable_width_rejected(width):
 def test_variable_requires_width():
     with pytest.raises(ValueError):
         uint("x")
-
-
-def test_index_zero_is_valid():
-    bit = var_bit("x", index=0, parent_width=3)
-    assert bit.index == 0
-
-
-@pytest.mark.parametrize("index,width", [(-1, 3), (3, 3), (1, -1), (1, 0)])
-def test_invalid_index_metadata_rejected(index, width):
-    with pytest.raises(ValueError):
-        var_bit("x", index=index, parent_width=width)
 
 
 @pytest.mark.parametrize("op,kind,width", [(operator.add, UIntType.ADD, 4), (operator.sub, UIntType.SUB, 3), (operator.mul, UIntType.MUL, 5), (operator.lshift, UIntType.LSHIFT, 3), (operator.rshift, UIntType.RSHIFT, 3)])
@@ -104,8 +93,8 @@ def test_operation_nodes_are_shared_by_operand_identity(x, y, p, q):
 
 def test_uint_cache_key_includes_width(x):
     amount = const_uint(1)
-    narrow = UInt.cache_int(UIntType.LSHIFT, 3, (x, amount))
-    wide = UInt.cache_int(UIntType.LSHIFT, 4, (x, amount))
+    narrow = UInt._create(uint_type=UIntType.LSHIFT, width=3, operands=(x, amount))
+    wide = UInt._create(uint_type=UIntType.LSHIFT, width=4, operands=(x, amount))
     assert narrow is not wide
     assert (narrow.width, wide.width) == (3, 4)
 
