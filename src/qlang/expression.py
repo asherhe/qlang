@@ -51,15 +51,20 @@ class ASTNode:
     # stores ASTNodes for fast lookup
     cache: dict[tuple[Any, ...], ASTNode] = {}
 
-    # whether this ASTNode has no children
     @property
     def is_leaf(self) -> bool:
+        """whether this ASTNode has no children"""
         return len(self.children) == 0
 
     @property
     def children(self) -> tuple[ASTNode, ...]:
         """the ASTNodes that the value of this ASTNode is dependent on"""
         return self.operands
+    
+    @property
+    def expected_operands(self) -> int:
+        """number of expected operands for this ASTNode type"""
+        raise NotImplementedError
 
     @classmethod
     def _get_cache_key(cls, **kwargs) -> tuple[Any, ...]:
@@ -124,6 +129,24 @@ class Bit(ASTNode):
         if self.bit_type == BitType.UINT:
             return (cast(UInt, self.parent_uint),)
         return super().children
+
+    @property
+    def expected_operands(self) -> int:
+        return {
+            BitType.CONST: 0,
+            BitType.VAR: 0,
+            BitType.UINT: 0,
+            BitType.NOT: 1,
+            BitType.XOR: 2,
+            BitType.AND: 2,
+            BitType.OR: 2,
+            BitType.EQ: 2,
+            BitType.NE: 2,
+            BitType.LT: 2,
+            BitType.GT: 2,
+            BitType.LE: 2,
+            BitType.GE: 2,
+        }[self.bit_type]
 
     @classmethod
     def _get_cache_key(
@@ -276,8 +299,21 @@ class UInt(ASTNode):
     @property
     def children(self) -> tuple[ASTNode, ...]:
         if self.uint_type == UIntType.BITS:
-            return tuple(cast(UInt, b.parent_uint) for b in self.bits)
+            return self.bits
         return super().children
+
+    @property
+    def expected_operands(self) -> int:
+        return {
+          UIntType.CONST: 0,
+          UIntType.VAR: 0,
+          UIntType.BITS: 0,
+          UIntType.ADD: 2,
+          UIntType.SUB: 2,
+          UIntType.MUL: 2,
+          UIntType.LSHIFT: 2,
+          UIntType.RSHIFT: 2,
+        }[self.uint_type]
 
     @classmethod
     def _get_cache_key(
