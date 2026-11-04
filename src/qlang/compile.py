@@ -45,7 +45,6 @@ def compile_oracle(expr: Bit) -> Oracle:
     # id -> ASTNode
     nodes: dict[int, ASTNode] = {id(node): node for node in parse_input(expr)}
 
-    # only Bit objects may be assigned indices 
     qubit_allocation: dict[int, int] = {}  # id -> qubit index
     inputs: dict[str, list[int]] = {}      # input name -> qubit indices
     clean_ancillas: list[int] = []         # list[qubit id]
@@ -89,6 +88,7 @@ def compile_oracle(expr: Bit) -> Oracle:
     compute = QuantumCircuit(qubit_label)
 
     def fresh_scratch() -> int:
+        """callback to allocate a new ancilla qubit"""
         index = compute.num_qubits
         compute.add_bits([AncillaQubit()])
         clean_ancillas.append(index)
@@ -99,34 +99,41 @@ def compile_oracle(expr: Bit) -> Oracle:
             compute.x(qubit_allocation[id(node)])
 
     # translate the operation 
-    for node in topo_nodes:
-        check_operation = node.bit_type
-        target_qubit = qubit_allocation[id(node)]
-
-        if check_operation in (BitType.NE, BitType.LT):
-            left, right = comparison_bits(node)
-            left_qubits = [qubit_allocation[id(bit)] for bit in left]
-            right_qubits = [qubit_allocation[id(bit)] for bit in right]
-
-            if check_operation == BitType.NE:
-                quantumNE(compute, left_qubits, right_qubits, target_qubit, fresh_scratch)
-            else:
-                quantumLT(compute, left_qubits, right_qubits, target_qubit, fresh_scratch)
-
+    for node_id, node in nodes.items():
+        if node.is_leaf:
             continue
-        qubitA = qubit_allocation[id(node.operands[0])]
-        if check_operation == BitType.NOT:
-            quantumNOT(compute, qubitA, target_qubit)
-        else:
-            qubitB = qubit_allocation[id(node.operands[1])]
-            if check_operation == BitType.AND:
-                quantumAND(compute, qubitA, qubitB, target_qubit)
-            elif check_operation == BitType.OR:
-                quantumOR(compute, qubitA, qubitB, target_qubit)
-            elif check_operation == BitType.XOR:
-                quantumXOR(compute, qubitA, qubitB, target_qubit)
+        elif isinstance(node, Bit):
+            op = node.bit_type
+            target_qubit = qubit_allocation[node_id]
+
+            if op in (BitType.NE, BitType.LT):
+                left, right = comparison_bits(node)
+                left_qubits = [qubit_allocation[id(bit)] for bit in left]
+                right_qubits = [qubit_allocation[id(bit)] for bit in right]
+
+                if op == BitType.NE:
+                    quantumNE(compute, left_qubits, right_qubits, target_qubit, fresh_scratch)
+                else:
+                    quantumLT(compute, left_qubits, right_qubits, target_qubit, fresh_scratch)
+
+                continue
+            qubitA = qubit_allocation[id(node.operands[0])]
+            if op == BitType.NOT:
+                quantumNOT(compute, qubitA, target_qubit)
             else:
-                raise ValueError(f"Unsupported operation: {check_operation}")
+                qubitB = qubit_allocation[id(node.operands[1])]
+                if op == BitType.AND:
+                    quantumAND(compute, qubitA, qubitB, target_qubit)
+                elif op == BitType.OR:
+                    quantumOR(compute, qubitA, qubitB, target_qubit)
+                elif op == BitType.XOR:
+                    quantumXOR(compute, qubitA, qubitB, target_qubit)
+                else:
+                    raise ValueError(f"Unsupported operation: {op}")
+        elif isinstance(node, UInt):
+            raise NotImplementedError
+        else:
+            raise TypeError(f"compilation of {type(node)} nodes not supported")
 
     # Calculate the predicate, mark its phase, then undo all scratch work.
     predicate_qubit = qubit_allocation[id(expr)]
