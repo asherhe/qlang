@@ -13,18 +13,16 @@ def _var_checker(
             if node.name not in assignments: 
                 raise ValueError(f"variable '{node.name}' is not assigned")
             value = assignments[node.name]
-            if isinstance(node, UInt) or (isinstance(node, Bit) and node.index is not None): 
-                if not isinstance(value, (int, bool)): 
+            if isinstance(node, UInt):
+                if not isinstance(value, int): 
                     raise ValueError(f"assignment value '{node.name}' must be an integer")
                 if value < 0: 
                     raise ValueError(f"assignment value '{node.name}' must be non-negative")
                 elif isinstance(node, UInt) and value >= (1 << node.width): 
                     raise ValueError(f"assignment value '{node.name}' cannot be larger than width")
-                elif isinstance(node, Bit) and value >= (1 << cast(int, node.parent_width)): 
-                    if not node.parent_width: 
-                        raise ValueError("parent width missing for Bit belonging to UInt")
-                    if value >= (1 << node.parent_width): 
-                        raise ValueError(f"assignment value '{node.name}' cannot be larger than parent width")
+            elif isinstance(node, Bit):
+                if not isinstance(value, (int, bool)):
+                    raise ValueError(f"assignment value of bit '{node.name}' must be a boolean or integer")
         elif isinstance(node, Bit) and node.bit_type == BitType.CONST: 
             if node.value is None: 
                 raise ValueError("const Bit has missing value")
@@ -196,7 +194,7 @@ def _evaluate_uncached(
 ) -> int | bool: 
     if not node.operands:  # leaf node
         _var_checker((node,), assignments)
-        if node_type(node) not in (BitType.CONST, BitType.VAR, UIntType.CONST, UIntType.VAR): 
+        if node_type(node) not in (BitType.CONST, BitType.VAR, BitType.UINT, UIntType.CONST, UIntType.VAR, UIntType.BITS): 
             raise ValueError("operator node must have operands")
         return _get_values((node,), assignments)[0]
     else:                  # operators
