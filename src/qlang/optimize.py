@@ -443,7 +443,7 @@ def coll_LSHIFT_const_route(expr: UInt, a: UInt, b: UInt):
     """hard-code a << c when c is constant"""
     if b.uint_type == UIntType.CONST:
         bits = (const_bit(0),) * b.const_value + a.bits
-        bits = bits[:a.width]
+        bits = bits[:expr.width]
         return bits_uint(bits)
 
 @collapse.rule(UIntType.LSHIFT)

@@ -150,6 +150,13 @@ def test_mul_by_power_of_two_becomes_shifted_bits_padded_to_product_width():
     assert result.bits == (zero, zero) + node.bits + (zero,)
 
 
+def test_constant_shift_truncates_to_shift_node_width_not_operand_width(x, y):
+    # (x + y) - y is 4 bits wide; shifting it left by 3 must keep the carry bit, not drop to 3
+    expr = ((x + y) - y) << 3
+    assert evaluate(expr, {"x": 1, "y": 0}) == 8
+    assert evaluate(optimize_expr(expr), {"x": 1, "y": 0}) == 8
+
+
 def test_optimizer_does_not_mutate_original_expression(x):
     expr = x + 0
     operands = expr.operands
