@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from enum import Enum, IntEnum, auto
-from typing import Any, Collection, TypeVar, cast
+from typing import Any, ClassVar, Collection, TypeVar, cast
 
 # -------- AST node types --------
 
@@ -49,7 +49,10 @@ class ASTNode:
     operands: tuple[ASTNode, ...]
 
     # stores ASTNodes for fast lookup
-    cache: dict[tuple[Any, ...], ASTNode] = {}
+    cache: ClassVar[dict[tuple[Any, ...], ASTNode]] = {}
+
+    # registry of all named variables
+    variables: ClassVar[dict[str, ASTNode]] = {}
 
     @property
     def is_leaf(self) -> bool:
@@ -123,6 +126,12 @@ class Bit(ASTNode):
         self.index = index
         self.parent_uint = parent_uint
         self.operands = operands
+
+        if bit_type == BitType.VAR:
+            if name in ASTNode.variables:
+                raise ValueError(f"variable {name} may only be defined once")
+            else:
+                ASTNode.variables[cast(str, name)] = self
 
     @property
     def children(self) -> tuple[ASTNode, ...]:
@@ -295,6 +304,12 @@ class UInt(ASTNode):
                     index=i,
                     parent_uint=self
                 ) for i in range(width))
+
+        if uint_type == UIntType.VAR:
+            if name in ASTNode.variables:
+                raise ValueError(f"variable {name} may only be defined once")
+            else:
+                ASTNode.variables[cast(str, name)] = self
 
     @property
     def children(self) -> tuple[ASTNode, ...]:
