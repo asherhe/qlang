@@ -32,7 +32,6 @@ def test_invalid_constants_rejected(value, width):
         const_uint(value, width)
 
 
-@pytest.mark.xfail(strict=True, raises=ValueError, reason="var_bit uses 'if not index', rejecting valid index zero in every UInt")
 def test_public_variable_factory_supports_bit_zero():
     node = var_uint("x", 3)
     assert node.name == "x"
@@ -41,7 +40,6 @@ def test_public_variable_factory_supports_bit_zero():
     assert all(b.name == "x" and b.parent_width == 3 for b in node.bits)
 
 
-@pytest.mark.xfail(strict=True, raises=ValueError, reason="uint variable construction reaches var_bit's invalid rejection of index zero")
 def test_uint_dispatches_variable_factory():
     node = uint("x", 2)
     assert isinstance(node, UInt)
@@ -59,13 +57,12 @@ def test_variable_requires_width():
         uint("x")
 
 
-@pytest.mark.xfail(strict=True, raises=ValueError, reason="var_bit treats index zero as missing")
 def test_index_zero_is_valid():
     bit = var_bit("x", index=0, parent_width=3)
     assert bit.index == 0
 
 
-@pytest.mark.parametrize("index,width", [(-1, 3), (3, 3), (1, -1), pytest.param(1, 0, marks=pytest.mark.xfail(strict=True, reason="var_bit skips validation when parent_width is zero"))])
+@pytest.mark.parametrize("index,width", [(-1, 3), (3, 3), (1, -1), (1, 0)])
 def test_invalid_index_metadata_rejected(index, width):
     with pytest.raises(ValueError):
         var_bit("x", index=index, parent_width=width)

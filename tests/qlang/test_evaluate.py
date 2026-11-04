@@ -112,7 +112,6 @@ def test_standalone_bits_normalize_without_mutating(p, value, expected):
     assert assignments == {"p": value}
 
 
-@pytest.mark.xfail(strict=True, raises=TypeError, reason="_var_checker shifts by parent_width before checking for None")
 def test_missing_indexed_parent_metadata_is_clear_error():
     with pytest.raises(ValueError, match="parent width"):
         evaluate(var_bit("x", index=1), {"x": 1})
