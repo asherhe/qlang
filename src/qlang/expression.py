@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from enum import Enum, IntEnum, auto
-from typing import Any, TypeVar, cast
+from typing import Any, Collection, TypeVar, cast
 
 # -------- AST node types --------
 
@@ -54,7 +54,12 @@ class ASTNode:
     # whether this ASTNode has no children
     @property
     def is_leaf(self) -> bool:
-        return len(self.operands) == 0
+        return len(self.children) == 0
+
+    @property
+    def children(self) -> tuple[ASTNode, ...]:
+        """the ASTNodes that the value of this ASTNode is dependent on"""
+        return self.operands
 
     @classmethod
     def _get_cache_key(cls, **kwargs) -> tuple[Any, ...]:
@@ -113,6 +118,12 @@ class Bit(ASTNode):
         self.index = index
         self.parent_uint = parent_uint
         self.operands = operands
+
+    @property
+    def children(self) -> tuple[ASTNode, ...]:
+        if self.bit_type == BitType.UINT:
+            return (cast(UInt, self.parent_uint),)
+        return super().children
 
     @classmethod
     def _get_cache_key(
@@ -261,6 +272,12 @@ class UInt(ASTNode):
                     index=i,
                     parent_uint=self
                 ) for i in range(width))
+
+    @property
+    def children(self) -> tuple[ASTNode, ...]:
+        if self.uint_type == UIntType.BITS:
+            return tuple(cast(UInt, b.parent_uint) for b in self.bits)
+        return super().children
 
     @classmethod
     def _get_cache_key(
