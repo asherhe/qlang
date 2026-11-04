@@ -39,6 +39,10 @@ def compile_oracle(expr: Bit) -> Oracle:
     Inputs and their bit positions are recorded in inputs. Phase mode has no
     external output qubits, so output is empty. All workspace starts/ends at zero.
     """
+    if not isinstance(expr, Bit):
+        raise TypeError(
+            "compile_oracle expects a Bit expression; decompose UInt expressions first"
+        )
     validate_expression(expr)
 
     # all ASTNodes in the expression in topological order
@@ -60,7 +64,9 @@ def compile_oracle(expr: Bit) -> Oracle:
 
         bits: tuple[Bit, ...] = ()
         if is_bit:
-            bits = (node,)
+            # UINT bits are allocated by their parent UInt node below
+            if kind != BitType.UINT:
+                bits = (node,)
         elif is_uint:
             if kind == UIntType.VAR:
                 inputs[cast(str, node.name)] = []
@@ -77,11 +83,11 @@ def compile_oracle(expr: Bit) -> Oracle:
                     # single-bit variable
                     inputs[cast(str, bit.name)] = [qubit_label]
                 case BitType.UINT:
-                    assert(is_uint)
-                    if node.uint_type == UIntType.VAR:
-                        inputs[cast(str, node.name)].append(qubit_label)
-                    elif len(node.operands) > 0:
-                        # part of an operator uint, mark as ancilla
+                    parent = cast(UInt, bit.parent_uint)
+                    if parent.uint_type == UIntType.VAR:
+                        inputs[cast(str, parent.name)].append(qubit_label)
+                    else:
+                        # part of a computed uint, mark as ancilla
                         clean_ancillas.append(qubit_label)
                 case _:
                     # all other (bit operators) - mark as ancilla bit
@@ -172,23 +178,40 @@ def validate_expression(expr: Bit) -> None:
         if not isinstance(children, tuple):
             raise TypeError("Node children must be a tuple; use (operand,) for one operand")
 
-        expected = node.expected_operands
-        if len(children) != expected:
-            raise ValueError(
-                f"{node} expects {expected} operand(s), got {len(node.operands)}"
-            )
-
         if isinstance(node, Bit):
+            # BitType is an IntEnum: checking its class prevents an unrelated
+            # integer or UIntType member with the same number from being accepted.
+            if not isinstance(node.bit_type, BitType):
+                raise TypeError("A Bit node's bit_type must be a BitType member")
+            expected = node.expected_operands
+            if len(node.operands) != expected:
+                raise ValueError(
+                    f"{node.bit_type.name} expects {expected} operand(s), got {len(node.operands)}"
+                )
             if node.bit_type in (BitType.VAR, BitType.UINT):
                 input_slot(node)
             elif node.bit_type == BitType.CONST:
                 if type(node.value) is not bool:
                     raise TypeError("constant bit nodes should be true or false")
+        elif isinstance(node, UInt):
+            if not isinstance(node.uint_type, UIntType):
+                raise TypeError("A UInt node's uint_type must be a UIntType member")
+            if node.uint_type not in (UIntType.VAR, UIntType.BITS):
+                raise ValueError(
+                    f"UInt {node.uint_type.name} nodes must be decomposed before compiling"
+                )
+            expected = node.expected_operands
+            if len(node.operands) != expected:
+                raise ValueError(
+                    f"{node.uint_type.name} expects {expected} operand(s), got {len(node.operands)}"
+                )
+        else:
+            raise TypeError(f"unsupported node type {type(node).__name__}")
 
         # Recurse so validation also reaches deeply nested operands. A valid
         # leaf has an empty tuple, which naturally ends that branch.
         visiting.add(node_id)
-        for operand in node.children:
+        for operand in node.operands:
             visit(operand)
         visiting.remove(node_id)
         visited.add(node_id)
@@ -329,4 +352,37 @@ def quantumLT(compute, left, right, target, fresh_scratch):
 
         lower_less = result
     
+def quantumADD(compute, a: list[int], b: list[int], out: list[int], fresh_scratch, carry_in=None, carry_out=None):
+    """
+    construct a quantum uint addition circuit
+
+    PARAMETERS
+    ----------
+    a, b       : list of qubits, LSB-first. can be any length
+    out        : list of qubits, LSB-last. length is the max of a and b
+    carry_in   : qubit for carry input
+    carry_out  : qubit for carry output
+    """
+
+    # uses cuccaro adder, 1 ancila cubit required
+    # TODO: draper adder if in-place allowed
+    
+    # normalize to len(a) >= len(b)
+    if len(a) < len(b):
+        tmp = a
+        a = b
+        b = tmp
+    assert(len(a) == len(out))
+
+    # TODO: use carry_in for ancilla if it is not used anywhere else
+    carry_ancilla = fresh_scratch()
+    # copy carry_in state
+    if carry_in is not None:
+        compute.cx(carry_in, carry_ancilla)
+
+    # do the math
+
+    # copy carry_out state
+    if carry_out is not None:
+        compute.cx(carry_ancilla, carry_out)
 

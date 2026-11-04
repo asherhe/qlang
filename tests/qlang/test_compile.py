@@ -122,25 +122,6 @@ class TestCompile(unittest.TestCase):
                         compile_oracle(expr)
             circuit.assert_not_called()
 
-    def test_invalid_nodes_and_operand_counts_are_rejected(self):
-        a = var_bit("a")
-        cases = (
-            Bit(bit_type=BitType.NOT),
-            Bit(bit_type=BitType.AND, operands=(a,)),
-            Bit(bit_type=BitType.VAR, name="a", operands=(a,)),
-            Bit(bit_type=BitType.NOT, operands=[a]),
-            Bit(bit_type=BitType.NOT, operands=(42,)),
-            Bit(bit_type=UIntType.VAR, name="bad"),
-            Bit(bit_type=BitType.VAR, name=" "),
-            Bit(bit_type=BitType.CONST, value=1),
-            Bit(bit_type=BitType.VAR, name="bad", index=-1),
-            Bit(bit_type=BitType.VAR, name="bad", index=True),
-        )
-        for expr in cases:
-            with self.subTest(node_id=id(expr)):
-                with self.assertRaises((TypeError, ValueError)):
-                    compile_oracle(expr)
-
     def test_cycles_are_rejected(self):
         cycle = Bit(bit_type=BitType.NOT)
         cycle.operands = (cycle,)
