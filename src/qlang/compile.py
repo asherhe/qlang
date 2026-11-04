@@ -118,13 +118,13 @@ def compile_oracle(expr: Bit) -> Oracle:
     # translate the operation 
     for node_id, node in nodes.items():
         kind = node_type(node)
-        node_qubit = qubit_allocation[node_id]
         if node.is_leaf:
             # initialize |1> CONST bits
             if isinstance(node, Bit) and kind == BitType.CONST and node.value:
-                compute.x(node_qubit)
+                compute.x(qubit_allocation[node_id])
         # translate operator nodes
         elif isinstance(node, Bit):
+            node_qubit = qubit_allocation[node_id]
             # check if primitive operator
             if kind not in (BitType.NOT, BitType.XOR, BitType.AND, BitType.OR, BitType.NE, BitType.GT):
                 raise TypeError(f"cannot compile non-primitive bit operator {node}")
@@ -156,6 +156,14 @@ def compile_oracle(expr: Bit) -> Oracle:
             # check if primitive operator
             if kind not in (UIntType.ADD,):
                 raise TypeError(f"cannot compile non-primitive bit operator {node}")
+
+            # all uint operations are binary so far
+            op_qubits = [[qubit_allocation[id(b)] for b in op.bits] for op in node.operands]
+            node_qubits = [qubit_allocation[id(b)] for b in node.bits]
+
+            if kind == UIntType.ADD:
+                sum_width = max(len(q) for q in op_qubits)
+                quantumADD(compute, op_qubits[0], op_qubits[1], node_qubits[:sum_width-1], fresh_scratch, carry_out=node_qubits[sum_width])
         else:
             raise TypeError(f"compilation of {type(node)} nodes not supported")
 
