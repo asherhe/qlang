@@ -549,7 +549,7 @@ def print_ast(expr: ASTNode, prefix="", is_tail=True):
 
     extension = "  " if is_tail else "│ "
     
-    children = []
-    for i, child in enumerate(expr.operands):
-        print_ast(child, prefix + extension, i == len(expr.operands) - 1)
+    children = expr.children
+    for i, child in enumerate(children):
+        print_ast(child, prefix + extension, i == len(children) - 1)
 
