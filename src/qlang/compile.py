@@ -55,34 +55,37 @@ def compile_oracle(expr: Bit) -> Oracle:
     # will have already been iterated through
     for node_id, node in nodes.items():
         kind = node_type(node)
-        if node.is_leaf:
-            # only CONST and VAR ASTNodes are leaf nodes
-            # while UIntType.BITS have no operands, its individual bits make up its children
-            bits: list[Bit] = []
-            if isinstance(node, Bit):
-                bits = [node]
-            elif isinstance(node, UInt):
-                bits = list(node.bits)
-                inputs[cast(str, node.name)] = []
+        is_bit = isinstance(node, Bit)
+        is_uint = isinstance(node, UInt)
 
-            for bit in bits:
-                qubit_allocation[id(bit)] = qubit_label
-                match bit.bit_type:
-                    case BitType.CONST:
-                        clean_ancillas.append(qubit_label)
-                    case BitType.VAR:
-                        # single-bit variable
-                        inputs[cast(str, bit.name)] = [qubit_label]
-                    case BitType.UINT:
-                        # part of a VAR UInt - cannot be a CONST UInt because their bits are all CONST
+        bits: tuple[Bit, ...] = ()
+        if is_bit:
+            bits = (node,)
+        elif is_uint:
+            if kind == UIntType.VAR:
+                inputs[cast(str, node.name)] = []
+            # BITS uints do not own their own bits
+            if kind != UIntType.BITS:
+                bits = node.bits
+
+        for bit in bits:
+            qubit_allocation[id(bit)] = qubit_label
+            match bit.bit_type:
+                case BitType.CONST:
+                    clean_ancillas.append(qubit_label)
+                case BitType.VAR:
+                    # single-bit variable
+                    inputs[cast(str, bit.name)] = [qubit_label]
+                case BitType.UINT:
+                    assert(is_uint)
+                    if node.uint_type == UIntType.VAR:
                         inputs[cast(str, node.name)].append(qubit_label)
-                qubit_label += 1
-        elif isinstance(node, UInt) and kind == UIntType.BITS:
-            # no action needed, child bits already handled
-            pass
-        else:
-            qubit_allocation[node_id] = qubit_label
-            clean_ancillas.append(qubit_label)
+                    elif len(node.operands) > 0:
+                        # part of an operator uint, mark as ancilla
+                        clean_ancillas.append(qubit_label)
+                case _:
+                    # all other (bit operators) - mark as ancilla bit
+                    clean_ancillas.append(qubit_label)
             qubit_label += 1
 
     compute = QuantumCircuit(qubit_label)
