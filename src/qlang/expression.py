@@ -298,6 +298,7 @@ class UInt(ASTNode):
 
     @property
     def children(self) -> tuple[ASTNode, ...]:
+        """the constituint bits of a UInt are only relevant if it is a BITS, otherwise they are not considered a dependency"""
         if self.uint_type == UIntType.BITS:
             return self.bits
         return super().children

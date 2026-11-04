@@ -1,11 +1,11 @@
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Iterable
+from typing import Iterable, cast
 
 from qiskit import QuantumCircuit
 from qiskit.circuit import AncillaQubit
 
-from .expression import ASTNode, Bit, BitType, UInt, UIntType, const_bit
+from .expression import ASTNode, Bit, BitType, UInt, UIntType, const_bit, node_type
 
 class OutputMode(Enum):
     BIT_FLIP = auto()
@@ -40,48 +40,51 @@ def compile_oracle(expr: Bit) -> Oracle:
     external output qubits, so output is empty. All workspace starts/ends at zero.
     """
     validate_expression(expr)
-    operation_order = parse_input(expr)
 
-    # Gather every node once. Operations keep their operands; include the root
-    # as well so variable-only and constant-only expressions work.
-    nodes: dict[int, ASTNode] = {id(expr): expr}
-    for operator in operation_order:
-        for operand in circuit_operands(operator):
-            nodes[id(operand)] = operand
+    # all ASTNodes in the expression in topological order
+    # id -> ASTNode
+    nodes: dict[int, ASTNode] = {id(node): node for node in parse_input(expr)}
 
-    qubit_allocation: dict[int, int] = {}
-    inputs: dict[str, list[int]] = {}
-    clean_ancillas: list[int] = []
+    # only Bit objects may be assigned indices 
+    qubit_allocation: dict[int, int] = {}  # id -> qubit index
+    inputs: dict[str, list[int]] = {}      # input name -> qubit indices
+    clean_ancillas: list[int] = []         # list[qubit id]
     qubit_label = 0
 
-    #grouping integers 
-    for node in nodes.values():
-        if not isinstance(node, Bit):
-            continue
-        if node.bit_type not in (BitType.VAR, BitType.UINT):
-            continue
+    # construct registry of qubits
+    # each ASTNode contributes only itself to the registry, as its child nodes
+    # will have already been iterated through
+    for node_id, node in nodes.items():
+        kind = node_type(node)
+        if node.is_leaf:
+            # only CONST and VAR ASTNodes are leaf nodes
+            # while UIntType.BITS have no operands, its individual bits make up its children
+            bits: list[Bit] = []
+            if isinstance(node, Bit):
+                bits = [node]
+            elif isinstance(node, UInt):
+                bits = list(node.bits)
+                inputs[cast(str, node.name)] = []
 
-        name, width, index = input_slot(node)
-        register = inputs.get(name)
-
-        if register is None:
-            register = list(range(qubit_label, qubit_label + width))
-            inputs[name] = register
-            qubit_label += width
-        elif len(register) != width:
-            raise ValueError(f"conflicting widths for {name!r}")
-
-        qubit_allocation[id(node)] = register[index]
-    for node in nodes.values():
-        if isinstance(node, Bit) and node.bit_type == BitType.CONST:
-            qubit_allocation[id(node)] = qubit_label
+            for bit in bits:
+                qubit_allocation[id(bit)] = qubit_label
+                match bit.bit_type:
+                    case BitType.CONST:
+                        clean_ancillas.append(qubit_label)
+                    case BitType.VAR:
+                        # single-bit variable
+                        inputs[cast(str, bit.name)] = [qubit_label]
+                    case BitType.UINT:
+                        # part of a VAR UInt - cannot be a CONST UInt because their bits are all CONST
+                        inputs[cast(str, node.name)].append(qubit_label)
+                qubit_label += 1
+        elif isinstance(node, UInt) and kind == UIntType.BITS:
+            # no action needed, child bits already handled
+            pass
+        else:
+            qubit_allocation[node_id] = qubit_label
             clean_ancillas.append(qubit_label)
             qubit_label += 1
-            
-    for operator in operation_order:
-        qubit_allocation[id(operator)] = qubit_label
-        clean_ancillas.append(qubit_label)
-        qubit_label += 1
 
     compute = QuantumCircuit(qubit_label)
 
@@ -96,12 +99,12 @@ def compile_oracle(expr: Bit) -> Oracle:
             compute.x(qubit_allocation[id(node)])
 
     # translate the operation 
-    for operator in operation_order:
-        check_operation = operator.bit_type
-        target_qubit = qubit_allocation[id(operator)]
+    for node in topo_nodes:
+        check_operation = node.bit_type
+        target_qubit = qubit_allocation[id(node)]
 
         if check_operation in (BitType.NE, BitType.LT):
-            left, right = comparison_bits(operator)
+            left, right = comparison_bits(node)
             left_qubits = [qubit_allocation[id(bit)] for bit in left]
             right_qubits = [qubit_allocation[id(bit)] for bit in right]
 
@@ -111,11 +114,11 @@ def compile_oracle(expr: Bit) -> Oracle:
                 quantumLT(compute, left_qubits, right_qubits, target_qubit, fresh_scratch)
 
             continue
-        qubitA = qubit_allocation[id(operator.operands[0])]
+        qubitA = qubit_allocation[id(node.operands[0])]
         if check_operation == BitType.NOT:
             quantumNOT(compute, qubitA, target_qubit)
         else:
-            qubitB = qubit_allocation[id(operator.operands[1])]
+            qubitB = qubit_allocation[id(node.operands[1])]
             if check_operation == BitType.AND:
                 quantumAND(compute, qubitA, qubitB, target_qubit)
             elif check_operation == BitType.OR:
@@ -183,7 +186,10 @@ def validate_expression(expr: Bit) -> None:
 
 
 def parse_input(node: ASTNode) -> list[ASTNode]:
-    """topological sort of an ASTNode graph"""
+    """
+    topological sort of an ASTNode graph. contains all nodes in the graph,
+    ensuring that a parent node only appears after all of its children.
+    """
 
     operation_order: list[ASTNode] = []
     visiting: set[int] = set()
@@ -202,10 +208,9 @@ def parse_input(node: ASTNode) -> list[ASTNode]:
         for child in children:
             visit(child)
         visiting.remove(node_id)
+
         visited.add(node_id)
-        
-        if len(children) > 0:
-            operation_order.append(node)
+        operation_order.append(node)
 
     visit(node)
     return operation_order
