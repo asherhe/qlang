@@ -3,7 +3,7 @@ from enum import Enum, auto
 
 from qiskit import QuantumCircuit
 
-from .expression import ASTNode, Bit, BitType
+from .expression import ASTNode, Bit, BitType, UInt, UIntType
 
 class OutputMode(Enum):
     BIT_FLIP = auto()
@@ -52,47 +52,30 @@ def compile_oracle(expr: Bit) -> Oracle:
     clean_ancillas: list[int] = []
     qubit_label = 0
 
-    # Group input nodes by name before allocating. x[0] and x[1] belong to the
-    # same integer register, rather than being conflicting standalone inputs.
-    variable_groups: dict[str, list[Bit]] = {}
+    #grouping integers 
     for node in nodes.values():
-        if isinstance(node, Bit) and node.bit_type == BitType.VAR:
-            name = node.name
-            assert name is not None  # validate_expression already checked this.
-            variable_groups.setdefault(name, []).append(node)
+        if not isinstance(node, Bit):
+            continue
+        if node.bit_type not in (BitType.VAR, BitType.UINT):
+            continue
 
-    for name, variables in variable_groups.items():
-        indexed = variables[0].index is not None
-        if any((node.index is not None) != indexed for node in variables):
-            raise ValueError(f"Input {name!r} mixes standalone and indexed bits")
+        name, width, index = input_slot(node)
+        register = inputs.get(name)
 
-        width = 1
-        if indexed:
-            # Metadata must preserve the original bit index. Even if only x[2]
-            # is referenced, reserve lower bits and the full declared width.
-            width = max(node.index for node in variables if node.index is not None) + 1
-            declared_widths = {node.parent_width for node in variables if node.parent_width is not None}
-            if len(declared_widths) > 1:
-                raise ValueError(f"Input {name!r} has conflicting parent widths")
-            if declared_widths:
-                declared_width = next(iter(declared_widths))
-                if width > declared_width:
-                    raise ValueError(f"Input {name!r} has a bit outside its declared width")
-                width = declared_width
+        if register is None:
+            register = list(range(qubit_label, qubit_label + width))
+            inputs[name] = register
+            qubit_label += width
+        elif len(register) != width:
+            raise ValueError(f"conflicting widths for {name!r}")
 
-        inputs[name] = list(range(qubit_label, qubit_label + width))
-        qubit_label += width
-        for node in variables:
-            position = 0 if node.index is None else node.index
-            # Separate objects naming the same input bit share its qubit.
-            qubit_allocation[id(node)] = inputs[name][position]
-
-    # Constants and operation results are workspace, not search inputs.
+        qubit_allocation[id(node)] = register[index]
     for node in nodes.values():
         if isinstance(node, Bit) and node.bit_type == BitType.CONST:
             qubit_allocation[id(node)] = qubit_label
             clean_ancillas.append(qubit_label)
             qubit_label += 1
+            
     for operator in operation_order:
         qubit_allocation[id(operator)] = qubit_label
         clean_ancillas.append(qubit_label)
@@ -101,9 +84,9 @@ def compile_oracle(expr: Bit) -> Oracle:
     compute = QuantumCircuit(qubit_label)
     for node in nodes.values():
         if isinstance(node, Bit) and node.bit_type == BitType.CONST and node.value:
-            # Each constant object appears once in nodes, so X is applied once.
             compute.x(qubit_allocation[id(node)])
 
+    # translate the operation 
     for operator in operation_order:
         check_operation = operator.bit_type
         target_qubit = qubit_allocation[id(operator)]
@@ -131,7 +114,7 @@ def compile_oracle(expr: Bit) -> Oracle:
     return Oracle(
         circuit=oracle_circuit,
         inputs=inputs,
-        output=[],  # Phase-only interface: no persistent Boolean output.
+        output=[],  
         clean_ancillas=clean_ancillas,
         dirty_ancillas=[],
     )
@@ -144,10 +127,12 @@ def validate_expression(expr: Bit) -> None:
     operand_counts = {
         BitType.VAR: 0,
         BitType.CONST: 0,
+        BitType.UINT: 0,
         BitType.NOT: 1,
         BitType.AND: 2,
         BitType.OR: 2,
         BitType.XOR: 2,
+
     }
 
     # Track integer IDs instead of objects because nodes overload equality.
@@ -183,22 +168,11 @@ def validate_expression(expr: Bit) -> None:
                 f"{node.bit_type.name} expects {expected} operand(s), got {len(node.operands)}"
             )
 
-        if node.bit_type == BitType.VAR:
-            if not isinstance(node.name, str) or not node.name.strip():
-                raise ValueError("Variable nodes need a nonempty name")
-            # An indexed input represents one bit of a UInt. A Boolean is not
-            # a valid index even though Python treats bool as a subclass of int.
-            if node.index is not None and (type(node.index) is not int or node.index < 0):
-                raise ValueError("Variable bit indices must be nonnegative integers")
-            if node.parent_width is not None:
-                if type(node.parent_width) is not int or node.parent_width <= 0:
-                    raise ValueError("Variable parent_width must be a positive integer")
-                if node.index is None or node.index >= node.parent_width:
-                    raise ValueError("Variable bit index must be within parent_width")
+        if node.bit_type in (BitType.VAR, BitType.UINT):
+            input_slot(node)
         elif node.bit_type == BitType.CONST:
-            # Read the constant's value, not the symbolic node's truth value.
             if type(node.value) is not bool:
-                raise TypeError("Constant Bit nodes must contain True or False")
+                raise TypeError("constant bit nodes should be true or false")
 
         # Recurse so validation also reaches deeply nested operands. A valid
         # leaf has an empty tuple, which naturally ends that branch.
@@ -221,9 +195,6 @@ def parse_input(node: Bit) -> list[Bit]:
     def visit(node: ASTNode) -> None:
         if not isinstance(node, Bit):
             raise TypeError("Expected decomposed Boolean Bit nodes")
-        # recursively visit the the next nodes to get the operations on inputs
-        # hopefully builds them in order
-
         node_id = id(node)
         if node_id in visiting:
             raise ValueError("Cycle in graph Boo hoo go fix it")
@@ -237,13 +208,38 @@ def parse_input(node: Bit) -> list[Bit]:
         visiting.remove(node_id)
         visited.add(node_id)
         
-        is_leaf = node.bit_type in (BitType.VAR, BitType.CONST)
+        is_leaf = node.bit_type in (BitType.VAR, BitType.CONST, BitType.UINT)
 
         if not is_leaf:
             operation_order.append(node)
 
     visit(node)
     return operation_order
+
+def input_slot(node: Bit) -> tuple[str, int, int]:
+    if node.bit_type == BitType.VAR:
+        name, width, index = node.name, 1, 0
+
+    elif node.bit_type == BitType.UINT:
+        parent = node.parent_uint
+        if not isinstance(parent, UInt) or parent.uint_type != UIntType.VAR:
+            raise ValueError("lower computed integer bits before compiling")
+
+        name, width, index = parent.name, parent.width, node.index
+
+    else:
+        raise ValueError("expected an input bit")
+
+    if not isinstance(name, str) or not name.strip():
+        raise ValueError("input needs a name")
+    if type(width) is not int or width < 1:
+        raise ValueError("input width must be a positive integer")
+    if type(index) is not int or not 0 <= index < width:
+        raise ValueError("input bit index is out of range")
+
+    return name, width, index
+
+
 
 def quantumAND(compute: QuantumCircuit,qubitA: int, qubitB: int, target_qubit: int) -> None:
     if qubitA == qubitB:
