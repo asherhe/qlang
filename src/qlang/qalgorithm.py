@@ -25,6 +25,13 @@ def _phase_oracle(
     
     qc = QuantumCircuit(oracle.circuit.num_qubits)
 
+    """
+        branch |00⟩|−⟩ : inputs ≠ 11 → no flip → +|00⟩|−⟩
+        branch |01⟩|−⟩ : inputs ≠ 11 → no flip → +|01⟩|−⟩
+        branch |10⟩|−⟩ : inputs ≠ 11 → no flip → +|10⟩|−⟩
+        branch |11⟩|−⟩ : inputs = 11 → flip    → −|11⟩|−⟩
+    """
+
     qc.x(out)
     qc.h(out)
     qc.compose(oracle.circuit, inplace=True)
@@ -99,7 +106,7 @@ def _grover_circuit(
 def search(
     params: dict[str, Iterable[int]],
     pred: Bit, # expression tree for the condition
-    k: int = 1
+    k: int
 ) -> dict[str, int] | None:
     """
     search for solutions in the space of params that satisfy pred
@@ -128,7 +135,7 @@ def search(
     execuble = transpile(circuit, simulator)
     result = simulator.run(execuble, shots=1024).result()
     counts = result.get_counts()
-    
+
     assignments = []
 
     # most frequent outcomes first: after amplification, solutions dominate
