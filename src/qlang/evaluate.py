@@ -7,8 +7,8 @@ def _var_checker(
     node: ASTNode,
     assignments: dict[str, int | bool],
 ) -> None: 
-    type = node_type(node)
-    if type in (BitType.VAR, UIntType.VAR): 
+    kind = node_type(node)
+    if kind in (BitType.VAR, UIntType.VAR): 
         if node.name not in assignments: 
             raise ValueError(f"variable '{node.name}' is not assigned")
         value = assignments[node.name]
@@ -39,17 +39,18 @@ def _get_value(
     assignments: dict[str, int | bool],
 ) -> int | bool:
     _var_checker(node, assignments)
+    kind = node_type(node)
     if isinstance(node, Bit):       # not actually that necessary but for intellisense polymorphism
-        if type == BitType.VAR:
+        if kind == BitType.VAR:
             return bool(assignments[cast(str, node.name)])
-        elif type == BitType.CONST: 
+        elif kind == BitType.CONST: 
             return cast(bool, node.value)
         else: 
             return NotImplemented
     elif isinstance(node, UInt): 
-        if type == UIntType.VAR: 
+        if kind == UIntType.VAR: 
             return assignments[cast(str, node.name)]
-        elif type == UIntType.CONST: 
+        elif kind == UIntType.CONST: 
             return sum(cast(bool, b.value) * (1<<i) for i, b in enumerate(node.bits))
         else: 
             return NotImplemented
@@ -64,29 +65,29 @@ def _bitwise_only_op(
 ): 
     if not isinstance(node, Bit): 
         raise ValueError("this op cannot be applied to a type other than Bit")
-    type = node.bit_type
-    match type: 
-        case BitType.XOR: 
+    kind = node.bit_type
+    match kind:
+        case BitType.XOR:
             name = "XOR"
-        case BitType.AND: 
+        case BitType.AND:
             name = "AND"
-        case BitType.OR: 
+        case BitType.OR:
             name = "OR"
-        case _: 
+        case _:
             return NotImplemented
     b1, b2 = node.operands[0], node.operands[1]   # not node.operands[:2] because intellisense can't do polymorphism
-    if not isinstance(b1, Bit) or not isinstance(b2, Bit): 
+    if not isinstance(b1, Bit) or not isinstance(b2, Bit):
         raise ValueError(f"{name} cannot be applied to a type other than Bit")
-    if b1.bit_type not in (BitType.VAR, BitType.CONST): 
+    if b1.bit_type not in (BitType.VAR, BitType.CONST):
         b1v = _evaluate(b1, assignments, memo)
-    else: 
+    else:
         b1v = _get_value(b1, assignments)
-    if b2.bit_type not in (BitType.VAR, BitType.CONST): 
+    if b2.bit_type not in (BitType.VAR, BitType.CONST):
         b2v = _evaluate(b2, assignments, memo)
-    else: 
+    else:
         b2v = _get_value(b2, assignments)
-    match type: 
-        case BitType.XOR: 
+    match kind:
+        case BitType.XOR:
             return b1v ^ b2v
         case BitType.AND: 
             return b1v & b2v
@@ -101,30 +102,30 @@ def _comparison_op(
 ): 
     if not isinstance(node, Bit): 
         raise ValueError("this op cannot be applied to a type other than Bit")
-    type = node.bit_type
+    kind = node.bit_type
     u1, u2 = node.operands[0], node.operands[1]
     if node_type(u1) not in (BitType.VAR, BitType.CONST, UIntType.VAR, UIntType.CONST):
         u1v = _evaluate(u1, assignments, memo)
-    else: 
+    else:
         u1v = _get_value(u1, assignments)
-    if node_type(u2) not in (BitType.VAR, BitType.CONST, UIntType.VAR, UIntType.CONST): 
+    if node_type(u2) not in (BitType.VAR, BitType.CONST, UIntType.VAR, UIntType.CONST):
         u2v = _evaluate(u2, assignments, memo)
-    else: 
+    else:
         u2v = _get_value(u2, assignments)
-    match type: 
-        case BitType.EQ: 
+    match kind:
+        case BitType.EQ:
             return u1v == u2v
-        case BitType.NE: 
+        case BitType.NE:
             return u1v != u2v
-        case BitType.GT: 
+        case BitType.GT:
             return u1v > u2v
-        case BitType.LT: 
+        case BitType.LT:
             return u1v < u2v
-        case BitType.GE: 
+        case BitType.GE:
             return u1v >= u2v
-        case BitType.LE: 
+        case BitType.LE:
             return u1v <= u2v
-        case _: 
+        case _:
             return NotImplemented
 
 # ADD, MUL, LSHIFT, RSHIFT
@@ -135,19 +136,19 @@ def _int_only_op(
 ): 
     if not isinstance(node, UInt): 
         raise ValueError("this op cannot be applied to a type other than UInt")
-    type = node.uint_type
-    match type: 
-        case UIntType.ADD: 
+    kind = node.uint_type
+    match kind:
+        case UIntType.ADD:
             name = "ADD"
-        case UIntType.SUB: 
+        case UIntType.SUB:
             name = "SUB"
-        case UIntType.MUL: 
+        case UIntType.MUL:
             name = "MUL"
-        case UIntType.LSHIFT: 
+        case UIntType.LSHIFT:
             name = "LSHIFT"
-        case UIntType.RSHIFT: 
+        case UIntType.RSHIFT:
             name = "RSHIFT"
-        case _: 
+        case _:
             return NotImplemented
     u1, u2 = node.operands[0], node.operands[1]
     if not isinstance(u1, UInt) or not isinstance(u2, UInt): 
@@ -160,8 +161,8 @@ def _int_only_op(
         u2v = _evaluate(u2, assignments, memo)
     else: 
         u2v = _get_value(u2, assignments)
-    match type: 
-        case UIntType.ADD: 
+    match kind:
+        case UIntType.ADD:
             return u1v + u2v
         case UIntType.SUB: 
             mask = (1 << node.width) - 1
