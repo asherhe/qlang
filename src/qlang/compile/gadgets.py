@@ -27,42 +27,46 @@ def get_gadget(node: ASTNode) -> Gadget:
 
 @gadget(BitType.AND)
 def q_AND(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
-    qubitA, qubitB = a[0], b[0]
-    target_qubit = qctx.pool.alloc()
-    if qubitA == qubitB:
-        qctx.cx(qubitA, target_qubit)
-    else:
-        qctx.ccx(qubitA, qubitB, target_qubit)
-    return [target_qubit]
+    qa, qb = a[0], b[0]
+    # in-place is not reversible so we must tank the ancilla
+    qout = qctx.pool.alloc()
+    qctx.ccx(qa, qb, qout)
+    return [qout]
 
 
 @gadget(BitType.OR)
 def q_OR(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
-    qubitA, qubitB = a[0], b[0]
-    target_qubit = qctx.pool.alloc()
-    if qubitA == qubitB:
-        qctx.cx(qubitA, target_qubit)
-    else:
-        qctx.cx(qubitA, target_qubit)
-        qctx.cx(qubitB, target_qubit)
-        qctx.ccx(qubitA, qubitB, target_qubit)
-    return [target_qubit]
+    qa, qb = a[0], b[0]
+    # in-place is not reversible so we must tank the ancilla
+    qout = qctx.pool.alloc()
+    qctx.x(qa)
+    qctx.x(qb)
+    qctx.ccx(qa, qb, qout)
+    # only recycle qa, qb if necessary
+    if not qa.one_use:
+        qctx.x(qa)
+    if not qb.one_use:
+        qctx.x(qb)
+    return [qout]
 
 @gadget(BitType.XOR)
 def q_XOR(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
-    qubitA, qubitB = a[0], b[0]
-    target_qubit = qctx.pool.alloc()
-    qctx.cx(qubitA, target_qubit)
-    qctx.cx(qubitB, target_qubit)
-    return [target_qubit]
+    qa, qb = a[0], b[0]
+    qout = qctx.pick_one_use(qa, qb)
+    if qout != qa:
+        qctx.cx(qa, qout)
+    if qout != qb:
+        qctx.cx(qb, qout)
+    return [qout]
 
 @gadget(BitType.NOT)
 def q_NOT(qctx: QCtx, node: ASTNode, a: list[Q]) -> list[Q]:
-    qubitA = a[0]
-    target_qubit = qctx.pool.alloc()
-    qctx.x(target_qubit)
-    qctx.cx(qubitA, target_qubit)
-    return [target_qubit]
+    qa = a[0]
+    qout = qctx.pick_one_use(qa)
+    qctx.x(qout)
+    if qout != qa:
+        qctx.cx(qa, qout)
+    return [qout]
 
 @gadget(BitType.EQ)
 def q_EQ(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:

@@ -19,6 +19,13 @@ class QCtx:
     circuit: QuantumCircuit
     pool: AncillaPool
 
+    def pick_one_use(self, *qubits: Q) -> Q:
+        """pick a one-use qubit from the arguments. allocate a new qubit in the pool if none are one-use"""
+        for q in qubits:
+            if q.one_use:
+                return q
+        return self.pool.alloc()
+
     # gate wrappers
     def x(self, q: Q): self.circuit.x(q.qubit)
     def cx(self, a: Q, t: Q): self.circuit.cx(a.qubit, t.qubit)
