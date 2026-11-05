@@ -7,10 +7,8 @@ from qlang.expression import ASTNode, UInt, UIntType, var_bit
 
 @pytest.fixture(autouse=True)
 def isolate_expression_cache():
-    saved = ASTNode.cache
-    ASTNode.cache = {}
+    ASTNode.reset()
     yield
-    ASTNode.cache = saved
 
 
 @pytest.fixture

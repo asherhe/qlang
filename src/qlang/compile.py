@@ -1,10 +1,12 @@
 from dataclasses import dataclass, field
 from enum import Enum, auto
+from typing import Iterable, cast
 
 from qiskit import QuantumCircuit
 from qiskit.circuit import AncillaQubit
 
-from .expression import ASTNode, Bit, BitType, UInt, UIntType, const_bit
+from .expression import ASTNode, Bit, BitType, UInt, UIntType, const_bit, node_type
+from .optimize import optimize_expr
 
 class OutputMode(Enum):
     BIT_FLIP = auto()
@@ -38,91 +40,133 @@ def compile_oracle(expr: Bit) -> Oracle:
     Inputs and their bit positions are recorded in inputs. Phase mode has no
     external output qubits, so output is empty. All workspace starts/ends at zero.
     """
+    if not isinstance(expr, Bit):
+        raise TypeError(
+            "compile_oracle expects a Bit expression; decompose UInt expressions first"
+        )
     validate_expression(expr)
-    operation_order = parse_input(expr)
 
-    # Gather every node once. Operations keep their operands; include the root
-    # as well so variable-only and constant-only expressions work.
-    nodes: dict[int, ASTNode] = {id(expr): expr}
-    for operator in operation_order:
-        for operand in circuit_operands(operator):
-            nodes[id(operand)] = operand
+    expr = cast(Bit, optimize_expr(expr))
 
-    qubit_allocation: dict[int, int] = {}
-    inputs: dict[str, list[int]] = {}
-    clean_ancillas: list[int] = []
+    # all ASTNodes in the expression in topological order
+    # id -> ASTNode
+    nodes: dict[int, ASTNode] = {id(node): node for node in parse_input(expr)}
+
+    qubit_allocation: dict[int, int] = {}  # id -> qubit index
+    uint_qubits: dict[int, list[int]] = {}       # id -> qubits
+    inputs: dict[str, list[int]] = {}      # input name -> qubit indices
+    clean_ancillas: list[int] = []         # list[qubit id]
     qubit_label = 0
 
-    #grouping integers 
-    for node in nodes.values():
-        if not isinstance(node, Bit):
-            continue
-        if node.bit_type not in (BitType.VAR, BitType.UINT):
-            continue
+    # construct registry of qubits
+    # each ASTNode contributes only itself to the registry, as its child nodes
+    # will have already been iterated through
+    for node_id, node in nodes.items():
+        kind = node_type(node)
+        is_bit = isinstance(node, Bit)
+        is_uint = isinstance(node, UInt)
 
-        name, width, index = input_slot(node)
-        register = inputs.get(name)
+        bits: tuple[Bit, ...] = ()
+        if is_bit:
+            # UINT bits are allocated by their parent UInt node below
+            if kind != BitType.UINT:
+                bits = (node,)
+        elif is_uint:
+            if kind == UIntType.VAR:
+                inputs[cast(str, node.name)] = []
+            # BITS uints do not own their own bits
+            if kind == UIntType.BITS:
+                uint_qubits[id(node)] = [qubit_allocation[id(b)] for b in node.bits]
+            else:
+                bits = node.bits
+                uint_qubits[id(node)] = []
 
-        if register is None:
-            register = list(range(qubit_label, qubit_label + width))
-            inputs[name] = register
-            qubit_label += width
-        elif len(register) != width:
-            raise ValueError(f"conflicting widths for {name!r}")
+        for bit in bits:
+            qubit_allocation[id(bit)] = qubit_label
+            match bit.bit_type:
+                case BitType.CONST:
+                    clean_ancillas.append(qubit_label)
+                case BitType.VAR:
+                    # single-bit variable
+                    inputs[cast(str, bit.name)] = [qubit_label]
+                case BitType.UINT:
+                    parent = cast(UInt, bit.parent_uint)
+                    if parent.uint_type == UIntType.VAR:
+                        inputs[cast(str, parent.name)].append(qubit_label)
+                    else:
+                        # part of a computed uint, mark as ancilla
+                        clean_ancillas.append(qubit_label)
+                case _:
+                    # all other (bit operators) - mark as ancilla bit
+                    clean_ancillas.append(qubit_label)
 
-        qubit_allocation[id(node)] = register[index]
-    for node in nodes.values():
-        if isinstance(node, Bit) and node.bit_type == BitType.CONST:
-            qubit_allocation[id(node)] = qubit_label
-            clean_ancillas.append(qubit_label)
+            # current node is always the parent
+            if is_uint:
+                uint_qubits[node_id].append(qubit_label)
+
             qubit_label += 1
-            
-    for operator in operation_order:
-        qubit_allocation[id(operator)] = qubit_label
-        clean_ancillas.append(qubit_label)
-        qubit_label += 1
+
+    if id(expr) in clean_ancillas:
+        clean_ancillas.remove(id(expr))
 
     compute = QuantumCircuit(qubit_label)
 
     def fresh_scratch() -> int:
+        """callback to allocate a new ancilla qubit"""
         index = compute.num_qubits
         compute.add_bits([AncillaQubit()])
         clean_ancillas.append(index)
         return index
 
-    for node in nodes.values():
-        if isinstance(node, Bit) and node.bit_type == BitType.CONST and node.value:
-            compute.x(qubit_allocation[id(node)])
-
     # translate the operation 
-    for operator in operation_order:
-        check_operation = operator.bit_type
-        target_qubit = qubit_allocation[id(operator)]
+    for node_id, node in nodes.items():
+        kind = node_type(node)
+        if node.is_leaf:
+            # initialize |1> CONST bits
+            if isinstance(node, Bit) and kind == BitType.CONST and node.value:
+                compute.x(qubit_allocation[node_id])
+        # translate operator nodes
+        elif isinstance(node, Bit):
+            node_qubit = qubit_allocation[node_id]
+            # check if primitive operator
+            if kind not in (BitType.NOT, BitType.XOR, BitType.AND, BitType.OR, BitType.NE, BitType.GT):
+                raise TypeError(f"cannot compile non-primitive bit operator {node}")
 
-        if check_operation in (BitType.NE, BitType.LT):
-            left, right = comparison_bits(operator)
-            left_qubits = [qubit_allocation[id(bit)] for bit in left]
-            right_qubits = [qubit_allocation[id(bit)] for bit in right]
+            if kind == BitType.NOT:
+                qubitA = qubit_allocation[id(node.operands[0])]
+                quantumNOT(compute, qubitA, node_qubit)
+            elif kind in (BitType.XOR, BitType.AND, BitType.OR):
+                qubitA = qubit_allocation[id(node.operands[0])]
+                qubitB = qubit_allocation[id(node.operands[1])]
+                if kind == BitType.XOR:
+                    quantumXOR(compute, qubitA, qubitB, node_qubit)
+                elif kind == BitType.AND:
+                    quantumAND(compute, qubitA, qubitB, node_qubit)
+                elif kind == BitType.OR:
+                    quantumOR(compute, qubitA, qubitB, node_qubit)
+            elif kind in (BitType.NE, BitType.LT):
+                # comparison operators
+                op_qubits = [[qubit_allocation[id(b)] for b in op.bits] for op in node.operands]
 
-            if check_operation == BitType.NE:
-                quantumNE(compute, left_qubits, right_qubits, target_qubit, fresh_scratch)
-            else:
-                quantumLT(compute, left_qubits, right_qubits, target_qubit, fresh_scratch)
+                if kind == BitType.NE:
+                    quantumNE(compute, op_qubits[0], op_qubits[1], node_qubit, fresh_scratch)
+                else:
+                    quantumLT(compute, op_qubits[0], op_qubits[1], node_qubit, fresh_scratch)
 
-            continue
-        qubitA = qubit_allocation[id(operator.operands[0])]
-        if check_operation == BitType.NOT:
-            quantumNOT(compute, qubitA, target_qubit)
+        elif isinstance(node, UInt):
+            # check if primitive operator
+            if kind not in (UIntType.ADD,):
+                raise TypeError(f"cannot compile non-primitive bit operator {node}")
+
+            # all uint operations are binary so far
+            op_qubits = [[qubit_allocation[id(b)] for b in op.bits] for op in node.operands]
+            node_qubits = [qubit_allocation[id(b)] for b in node.bits]
+
+            if kind == UIntType.ADD:
+                sum_width = max(len(q) for q in op_qubits)
+                quantumADD(compute, op_qubits[0], op_qubits[1], node_qubits[:sum_width-1], fresh_scratch, carry_out=node_qubits[sum_width])
         else:
-            qubitB = qubit_allocation[id(operator.operands[1])]
-            if check_operation == BitType.AND:
-                quantumAND(compute, qubitA, qubitB, target_qubit)
-            elif check_operation == BitType.OR:
-                quantumOR(compute, qubitA, qubitB, target_qubit)
-            elif check_operation == BitType.XOR:
-                quantumXOR(compute, qubitA, qubitB, target_qubit)
-            else:
-                raise ValueError(f"Unsupported operation: {check_operation}")
+            raise TypeError(f"compilation of {type(node)} nodes not supported")
 
     # Calculate the predicate, mark its phase, then undo all scratch work.
     predicate_qubit = qubit_allocation[id(expr)]
@@ -141,64 +185,52 @@ def compile_oracle(expr: Bit) -> Oracle:
 
 def validate_expression(expr: Bit) -> None:
     """Check that every reachable node is supported before allocating qubits."""
-    # Dictionary: supported operation -> required number of child nodes.
-    # Leaves have no children; NOT has one; the other operations have two.
-    operand_counts = {
-        BitType.VAR: 0,
-        BitType.CONST: 0,
-        BitType.UINT: 0,
-        BitType.NOT: 1,
-        BitType.AND: 2,
-        BitType.OR: 2,
-        BitType.XOR: 2,
-        BitType.NE: 2,
-        BitType.LT:2
-
-    }
-
-    # Track integer IDs instead of objects because nodes overload equality.
     # visiting catches circular dependencies; visited skips shared nodes that
     # have already passed every check. Neither set changes the expression.
     visiting: set[int] = set()
     visited: set[int] = set()
 
     def visit(node: ASTNode) -> None:
-        # Check the class before reading .bit_type. UInt has .uint_type instead
-        # and must be decomposed by stage 2 before reaching this compiler.
-        if not isinstance(node, Bit):
-            raise TypeError("Expected a Bit node; decompose UInt expressions in stage 2 first")
-
         node_id = id(node)
         if node_id in visiting:
             raise ValueError("Cycle detected in expression graph")
         if node_id in visited:
             return
 
-        # BitType is an IntEnum: checking its class prevents an unrelated
-        # integer or UIntType member with the same number from being accepted.
-        if not isinstance(node.bit_type, BitType):
-            raise TypeError("A Bit node's bit_type must be a BitType member")
-        if node.bit_type not in operand_counts:
-            raise ValueError(f"Unsupported operation {node.bit_type.name}; decompose it in stage 2 first")
-        if not isinstance(node.operands, tuple):
-            raise TypeError("Node operands must be a tuple; use (operand,) for one operand")
+        children = node.children
+        if not isinstance(children, tuple):
+            raise TypeError("Node children must be a tuple; use (operand,) for one operand")
 
-        expected = operand_counts[node.bit_type]
-        if len(node.operands) != expected:
-            raise ValueError(
-                f"{node.bit_type.name} expects {expected} operand(s), got {len(node.operands)}"
-            )
-
-        if node.bit_type in (BitType.VAR, BitType.UINT):
-            input_slot(node)
-        elif node.bit_type == BitType.CONST:
-            if type(node.value) is not bool:
-                raise TypeError("constant bit nodes should be true or false")
+        if isinstance(node, Bit):
+            # BitType is an IntEnum: checking its class prevents an unrelated
+            # integer or UIntType member with the same number from being accepted.
+            if not isinstance(node.bit_type, BitType):
+                raise TypeError("A Bit node's bit_type must be a BitType member")
+            expected = node.expected_operands
+            if len(node.operands) != expected:
+                raise ValueError(
+                    f"{node.bit_type.name} expects {expected} operand(s), got {len(node.operands)}"
+                )
+            if node.bit_type in (BitType.VAR, BitType.UINT):
+                input_slot(node)
+            elif node.bit_type == BitType.CONST:
+                if type(node.value) is not bool:
+                    raise TypeError("constant bit nodes should be true or false")
+        elif isinstance(node, UInt):
+            if not isinstance(node.uint_type, UIntType):
+                raise TypeError("A UInt node's uint_type must be a UIntType member")
+            expected = node.expected_operands
+            if len(node.operands) != expected:
+                raise ValueError(
+                    f"{node.uint_type.name} expects {expected} operand(s), got {len(node.operands)}"
+                )
+        else:
+            raise TypeError(f"unsupported node type {type(node).__name__}")
 
         # Recurse so validation also reaches deeply nested operands. A valid
         # leaf has an empty tuple, which naturally ends that branch.
         visiting.add(node_id)
-        for operand in circuit_operands(node):
+        for operand in node.operands:
             visit(operand)
         visiting.remove(node_id)
         visited.add(node_id)
@@ -206,30 +238,32 @@ def validate_expression(expr: Bit) -> None:
     visit(expr)
 
 
-def parse_input(node: Bit) -> list[Bit]:
-    operation_order: list[Bit] = []
+def parse_input(node: ASTNode) -> list[ASTNode]:
+    """
+    topological sort of an ASTNode graph. contains all nodes in the graph,
+    ensuring that a parent node only appears after all of its children.
+    """
+
+    operation_order: list[ASTNode] = []
     visiting: set[int] = set()
     visited: set[int] = set()
     def visit(node: ASTNode) -> None:
-        if not isinstance(node, Bit):
-            raise TypeError("Expected decomposed Boolean Bit nodes")
         node_id = id(node)
         if node_id in visiting:
             raise ValueError("Cycle in graph Boo hoo go fix it")
         if node_id in visited: 
             return 
-        if not isinstance(node.operands, tuple):
+
+        children = node.children
+        if not isinstance(children, tuple):
             raise TypeError("yo fix ur shit bro keep multiple arguments in a tuple")
         visiting.add(node_id)
-        for operand in circuit_operands(node):
-            visit(operand)
+        for child in children:
+            visit(child)
         visiting.remove(node_id)
-        visited.add(node_id)
-        
-        is_leaf = node.bit_type in (BitType.VAR, BitType.CONST, BitType.UINT)
 
-        if not is_leaf:
-            operation_order.append(node)
+        visited.add(node_id)
+        operation_order.append(node)
 
     visit(node)
     return operation_order
@@ -252,25 +286,6 @@ def input_slot(node: Bit) -> tuple[str, int, int]:
         raise ValueError("input bit index is out of range")
 
     return name, width, index
-
-
-def comparison_bits(node: Bit):
-    left,right = node.operands
-    if isinstance(left, Bit) and isinstance(right, Bit):
-        return (left,), (right,)
-    if not isinstance(left, UInt) or not isinstance(right, UInt):
-        raise TypeError("Comparison operands must both be Bit or both be UInt")
-    width = max(left.width, right.width)
-    zero = const_bit(False)
-    return (left.bits + (zero,) * (width - left.width), right.bits + (zero,) * (width - right.width),)
-
-
-def circuit_operands(node: Bit):
-    if node.bit_type in (BitType.NE, BitType.LT):
-        left, right = comparison_bits(node)
-        return left + right
-
-    return node.operands
 
 
 def quantumAND(compute: QuantumCircuit,qubitA: int, qubitB: int, target_qubit: int) -> None:
@@ -296,7 +311,7 @@ def quantumNOT(compute: QuantumCircuit, qubitA: int, target_qubit: int) -> None:
     compute.x(target_qubit)
     compute.cx(qubitA, target_qubit)
 
-def quantumNE(compute, left, right, target, fresh_scratch):
+def quantumNE(compute: QuantumCircuit, left, right, target, fresh_scratch):
     if len(left) == 1:
         quantumXOR(compute, left[0], right[0], target)
         return
@@ -313,7 +328,8 @@ def quantumNE(compute, left, right, target, fresh_scratch):
         quantumOR(compute, any_different, difference, result)
         any_different = result
 
-def quantumLT(compute, left, right, target, fresh_scratch):
+def quantumLT(compute: QuantumCircuit, left, right, target, fresh_scratch):
+    # BUG: cooked when size of left and right mismatch
     lower_less = None
 
     for i, (a, b) in enumerate(zip(left, right, strict=True)):
@@ -337,4 +353,61 @@ def quantumLT(compute, left, right, target, fresh_scratch):
 
         lower_less = result
     
+def quantumADD(compute: QuantumCircuit, a: list[int], b: list[int], out: list[int], fresh_scratch, carry_in=None, carry_out=None):
+    """
+    construct a quantum uint addition circuit
+
+    PARAMETERS
+    ----------
+    a, b       : list of qubits, LSB-first. can be any length
+    out        : list of qubits, LSB-last. length is the max of a and b
+    carry_in   : qubit for carry input
+    carry_out  : qubit for carry output
+    """
+
+    # uses cuccaro adder, 1 ancila cubit required
+    # TODO: draper adder if in-place allowed
+    
+    # normalize to len(a) >= len(b)
+    if len(a) < len(b):
+        tmp = a
+        a = b
+        b = tmp
+    assert(len(a) == len(out))
+
+    # TODO: use carry_in for ancilla if it is not used anywhere else
+    carry_ancilla = fresh_scratch()
+    # copy carry_in state
+    if carry_in is not None:
+        compute.cx(carry_in, carry_ancilla)
+
+    # copy b onto out
+    for i in range(len(b)):
+        compute.cx(b[i], out[i])
+
+    # forward sweep
+    for i in range(len(b)):
+        compute.cx(carry_ancilla, out[i])
+        compute.cx(carry_ancilla, a[i])
+        compute.ccx(a[i], out[i], carry_ancilla)
+        
+    # forward sweep where b is 0
+    # simplifies to a toffoli gate
+    for i in range(len(b), len(a)):
+        compute.cx(carry_ancilla, a[i])
+
+    # copy carry_out state
+    if carry_out is not None:
+        compute.cx(carry_ancilla, carry_out)
+
+    # forward sweep
+    for i in range(len(a)-1, len(b)-1, -1):
+        compute.cx(carry_ancilla, a[i])
+        
+    # forward sweep where b is 0
+    # simplifies to a toffoli gate
+    for i in range(len(b)-1, -1, -1):
+        compute.ccx(a[i], out[i], carry_ancilla)
+        compute.cx(carry_ancilla, a[i])
+        compute.cx(carry_ancilla, out[i])
 

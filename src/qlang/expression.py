@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from enum import Enum, IntEnum, auto
-from typing import Any, TypeVar, cast
+from typing import Any, ClassVar, Collection, TypeVar, cast
 
 # -------- AST node types --------
 
@@ -49,12 +49,31 @@ class ASTNode:
     operands: tuple[ASTNode, ...]
 
     # stores ASTNodes for fast lookup
-    cache: dict[tuple[Any, ...], ASTNode] = {}
+    cache: ClassVar[dict[tuple[Any, ...], ASTNode]] = {}
 
-    # whether this ASTNode has no children
+    # registry of all named variables
+    variables: ClassVar[dict[str, ASTNode]] = {}
+
+    @classmethod
+    def reset(cls):
+        """reset ASTNode cache and variable table"""
+        cls.cache = {}
+        cls.variables = {}
+
     @property
     def is_leaf(self) -> bool:
-        return len(self.operands) == 0
+        """whether this ASTNode has no children"""
+        return len(self.children) == 0
+
+    @property
+    def children(self) -> tuple[ASTNode, ...]:
+        """the ASTNodes that the value of this ASTNode is dependent on"""
+        return self.operands
+    
+    @property
+    def expected_operands(self) -> int:
+        """number of expected operands for this ASTNode type"""
+        raise NotImplementedError
 
     @classmethod
     def _get_cache_key(cls, **kwargs) -> tuple[Any, ...]:
@@ -113,6 +132,38 @@ class Bit(ASTNode):
         self.index = index
         self.parent_uint = parent_uint
         self.operands = operands
+
+        if bit_type == BitType.VAR:
+            if len(operands) != 0:
+                raise ValueError(f"{bit_type} expects 0 operand(s), got {len(operands)}")
+            if name in ASTNode.variables:
+                raise ValueError(f"variable {name} may only be defined once")
+            else:
+                ASTNode.variables[cast(str, name)] = self
+
+    @property
+    def children(self) -> tuple[ASTNode, ...]:
+        if self.bit_type == BitType.UINT:
+            return (cast(UInt, self.parent_uint),)
+        return super().children
+
+    @property
+    def expected_operands(self) -> int:
+        return {
+            BitType.CONST: 0,
+            BitType.VAR: 0,
+            BitType.UINT: 0,
+            BitType.NOT: 1,
+            BitType.XOR: 2,
+            BitType.AND: 2,
+            BitType.OR: 2,
+            BitType.EQ: 2,
+            BitType.NE: 2,
+            BitType.LT: 2,
+            BitType.GT: 2,
+            BitType.LE: 2,
+            BitType.GE: 2,
+        }[self.bit_type]
 
     @classmethod
     def _get_cache_key(
@@ -261,6 +312,32 @@ class UInt(ASTNode):
                     index=i,
                     parent_uint=self
                 ) for i in range(width))
+
+        if uint_type == UIntType.VAR:
+            if name in ASTNode.variables:
+                raise ValueError(f"variable {name} may only be defined once")
+            else:
+                ASTNode.variables[cast(str, name)] = self
+
+    @property
+    def children(self) -> tuple[ASTNode, ...]:
+        """the constituint bits of a UInt are only relevant if it is a BITS, otherwise they are not considered a dependency"""
+        if self.uint_type == UIntType.BITS:
+            return self.bits
+        return super().children
+
+    @property
+    def expected_operands(self) -> int:
+        return {
+          UIntType.CONST: 0,
+          UIntType.VAR: 0,
+          UIntType.BITS: 0,
+          UIntType.ADD: 2,
+          UIntType.SUB: 2,
+          UIntType.MUL: 2,
+          UIntType.LSHIFT: 2,
+          UIntType.RSHIFT: 2,
+        }[self.uint_type]
 
     @classmethod
     def _get_cache_key(
@@ -496,7 +573,7 @@ def print_ast(expr: ASTNode, prefix="", is_tail=True):
 
     extension = "  " if is_tail else "│ "
     
-    children = []
-    for i, child in enumerate(expr.operands):
-        print_ast(child, prefix + extension, i == len(expr.operands) - 1)
+    children = expr.children
+    for i, child in enumerate(children):
+        print_ast(child, prefix + extension, i == len(children) - 1)
 

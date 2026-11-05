@@ -9,7 +9,8 @@ from qiskit import QuantumCircuit
 from qiskit.quantum_info import Statevector
 
 from qlang.compile import Oracle, OutputMode, compile_oracle
-from qlang.expression import ASTNode, Bit, BitType, UInt, UIntType, const_bit, var_bit, var_uint
+from qlang.expression import ASTNode, Bit, BitType, UIntType, const_bit, var_bit, var_uint
+from qlang.evaluate import evaluate
 
 
 class TestCompile(unittest.TestCase):
@@ -33,22 +34,10 @@ class TestCompile(unittest.TestCase):
         self.assertEqual(set(input_qubits) | set(oracle.clean_ancillas), set(range(oracle.circuit.num_qubits)))
 
         def evaluate(node, assignments):
-            if isinstance(node, UInt):
-                if node.uint_type == UIntType.VAR:
-                    return assignments[node.name]
-                if node.uint_type in (UIntType.CONST, UIntType.BITS):
-                    return sum(
-                        int(evaluate(bit, assignments)) << index
-                        for index, bit in enumerate(node.bits)
-                    )
-                raise AssertionError(f"Unexpected reference operation: {node.uint_type}")
-
             kind = node.bit_type
             if kind == BitType.VAR:
-                return bool(assignments[node.name])
-            if kind == BitType.UINT:
-                # Indexed leaves read one bit of the parent's integer assignment.
-                return bool((assignments[node.parent_uint.name] >> node.index) & 1)
+                value = assignments[node.name]
+                return bool(value) if node.index is None else bool((value >> node.index) & 1)
             if kind == BitType.CONST:
                 return node.value
             values = [evaluate(child, assignments) for child in node.operands]
@@ -58,10 +47,8 @@ class TestCompile(unittest.TestCase):
                 return values[0] and values[1]
             if kind == BitType.OR:
                 return values[0] or values[1]
-            if kind in (BitType.XOR, BitType.NE):
+            if kind == BitType.XOR:
                 return values[0] != values[1]
-            if kind == BitType.LT:
-                return values[0] < values[1]
             raise AssertionError(f"Unexpected reference operation: {kind}")
 
         names = list(oracle.inputs)
@@ -161,6 +148,10 @@ class TestCompile(unittest.TestCase):
         self.assertEqual(len(oracle.inputs["x"]), 3)
         self.assertEqual(oracle.clean_ancillas, [])
 
+    def test_indexed_input_without_parent_width_reserves_lower_bits(self):
+        oracle = self.assert_phase_oracle(var_bit("x", 2))
+        self.assertEqual(len(oracle.inputs["x"]), 3)
+
     def test_distinct_objects_naming_same_input_share_a_qubit(self):
         a = Bit(bit_type=BitType.VAR, name="a")
         another_a = Bit(bit_type=BitType.VAR, name="a")
@@ -179,32 +170,23 @@ class TestCompile(unittest.TestCase):
 
     def test_invalid_nodes_and_operand_counts_are_rejected(self):
         a = var_bit("a")
-        parent = var_uint("parent", 2)
-        # Pass malformed arguments on purpose to exercise runtime validation.
         cases = (
             Bit(bit_type=BitType.NOT),
             Bit(bit_type=BitType.AND, operands=(a,)),
             Bit(bit_type=BitType.VAR, name="a", operands=(a,)),
-            Bit(bit_type=BitType.NOT, operands=[a]),  # pyright: ignore[reportArgumentType]
-            Bit(bit_type=BitType.NOT, operands=(42,)),  # pyright: ignore[reportArgumentType]
-            Bit(bit_type=UIntType.VAR, name="bad"),  # pyright: ignore[reportArgumentType]
+            Bit(bit_type=BitType.NOT, operands=[a]),
+            Bit(bit_type=BitType.NOT, operands=(42,)),
+            Bit(bit_type=UIntType.VAR, name="bad"),
             Bit(bit_type=BitType.VAR, name=" "),
-            Bit(bit_type=BitType.CONST, value=1),  # pyright: ignore[reportArgumentType]
-            Bit(bit_type=BitType.UINT, index=-1, parent_uint=parent),
-            Bit(bit_type=BitType.UINT, index=True, parent_uint=parent),
-            Bit(bit_type=BitType.UINT, index=2, parent_uint=parent),
-            Bit(bit_type=BitType.UINT, index=0),
+            Bit(bit_type=BitType.CONST, value=1),
+            Bit(bit_type=BitType.VAR, name="bad", index=-1),
+            Bit(bit_type=BitType.VAR, name="bad", index=True),
+            Bit(bit_type=BitType.VAR, name="bad", index=2, parent_width=2),
         )
         for expr in cases:
             with self.subTest(node_id=id(expr)):
                 with self.assertRaises((TypeError, ValueError)):
                     compile_oracle(expr)
-
-    def test_mixed_comparison_operands_are_rejected(self):
-        a, x = var_bit("a"), var_uint("x", 2)
-        expr = Bit(bit_type=BitType.LT, operands=(a, x))
-        with self.assertRaisesRegex(TypeError, "must both be Bit or both be UInt"):
-            compile_oracle(expr)
 
     def test_cycles_are_rejected(self):
         cycle = Bit(bit_type=BitType.NOT)
@@ -214,8 +196,9 @@ class TestCompile(unittest.TestCase):
 
     def test_conflicting_input_definitions_are_rejected(self):
         cases = (
-            var_bit("x") & var_uint("x", 2).bits[0],
-            var_uint("x", 2).bits[0] & var_uint("x", 3).bits[1],
+            var_bit("x") & var_bit("x", 0, parent_width=2),
+            var_bit("x", 0, parent_width=2) & var_bit("x", 1, parent_width=3),
+            var_bit("x", 0, parent_width=2) & var_bit("x", 3),
         )
         for expr in cases:
             with self.subTest(node_id=id(expr)):

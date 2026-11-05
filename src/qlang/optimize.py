@@ -84,16 +84,6 @@ def run_rule_pass(expr: ASTNode, rule_pass: RulePass) -> ASTNode:
 # decompose operations that cannot be directly built with quantum gates into primitive operators
 decompose = RulePass("decompose")
 
-@decompose.rule(BitType.OR)
-def deco_OR(expr: Bit, a: Bit, b: Bit):
-    """
-    decompose into AND, NOT by de morgan's laws
-
-    assuming only binary OR operation
-    maybe we will do n-ary OR eventually but not now
-    """
-    return ~(~a & ~b)
-
 @decompose.rule(BitType.EQ)
 def deco_EQ(expr: Bit, a: UInt, b: UInt):
     """!= is simpler to implement in gates"""
