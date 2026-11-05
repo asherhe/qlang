@@ -100,6 +100,8 @@ class AncillaPool:
         """append inverses of new gates since a given point in the circuit"""
         instructions = list(self.circuit.data[circuit_mark:])
         for inst in reversed(instructions):
+            if set(inst.qubits) & protected:
+                continue
             self.circuit.append(inst.operation.inverse(), inst.qubits, inst.clbits)
     
     @staticmethod
