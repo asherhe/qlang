@@ -84,10 +84,9 @@ def run_rule_pass(expr: ASTNode, rule_pass: RulePass) -> ASTNode:
 # decompose operations that cannot be directly built with quantum gates into primitive operators
 decompose = RulePass("decompose")
 
-@decompose.rule(BitType.EQ)
-def deco_EQ(expr: Bit, a: UInt, b: UInt):
-    """!= is simpler to implement in gates"""
-    return ~(a != b)
+@decompose.rule(BitType.NE)
+def deco_NE(expr: Bit, a: UInt, b: UInt):
+    return ~(a == b)
 
 # collapse all comparison operators to LT to keep compilation clean
 @decompose.rule(BitType.GT)
