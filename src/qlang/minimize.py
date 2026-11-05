@@ -117,10 +117,25 @@ def extract_linear(expr: ASTNode) -> tuple[int | bool, dict[str, int]]:
             const = left_const * right_const
             coeffs = {}
             if not left_coeffs: 
-                coeffs = {key: value * left_const for key, value in right_coeffs.items()}
+                coeffs = {key: value * left_const for key, value in right_coeffs.items() if value * left_const != 0}
             else: 
-                coeffs = {key: value * right_const for key, value in left_coeffs.items()}
+                coeffs = {key: value * right_const for key, value in left_coeffs.items() if value * right_const != 0}
             return const, coeffs
+    return NotImplemented
+
+def evaluate_linear(expr: Bit) -> tuple[int | bool, dict[str, int]]: 
+    if len(expr.operands) == 2 and expr.bit_type == BitType.EQ: 
+        left, right = expr.operands
+        left_const, left_coeffs = extract_linear(left)
+        right_const, right_coeffs = extract_linear(right)
+        const = left_const - right_const
+        coeffs = left_coeffs
+        for key, value in right_coeffs.items(): 
+            if key not in left_coeffs: 
+                coeffs[key] = -value
+            else: 
+                coeffs[key] -= value
+        return const, coeffs
     return NotImplemented
 
 def qaoa(
@@ -138,8 +153,9 @@ def qaoa(
             widths[var.name] = 1
     grid = [i * 2*pi / iterations for i in range(iterations)]
 
-    # if evaluate_linear(constraint) is not NotImplemented: 
-    #     ...
+    linear = evaluate_linear(constraint)
+    if linear is not NotImplemented: 
+        ...
 
     operator = constraint_to_cost_op(constraint, widths, objective, penalty)
     state_at, mean_cost = qaoa_creator(operator)
