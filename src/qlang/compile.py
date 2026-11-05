@@ -146,14 +146,12 @@ def compile_oracle(expr: Bit) -> Oracle:
                     quantumOR(compute, qubitA, qubitB, node_qubit)
             elif kind in (BitType.NE, BitType.LT):
                 # comparison operators
-                left, right = comparison_bits(node)
-                left_qubits = [qubit_allocation[id(bit)] for bit in left]
-                right_qubits = [qubit_allocation[id(bit)] for bit in right]
+                op_qubits = [[qubit_allocation[id(b)] for b in op.bits] for op in node.operands]
 
                 if kind == BitType.NE:
-                    quantumNE(compute, left_qubits, right_qubits, node_qubit, fresh_scratch)
+                    quantumNE(compute, op_qubits[0], op_qubits[1], node_qubit, fresh_scratch)
                 else:
-                    quantumLT(compute, left_qubits, right_qubits, node_qubit, fresh_scratch)
+                    quantumLT(compute, op_qubits[0], op_qubits[1], node_qubit, fresh_scratch)
 
         elif isinstance(node, UInt):
             # check if primitive operator
@@ -290,25 +288,6 @@ def input_slot(node: Bit) -> tuple[str, int, int]:
     return name, width, index
 
 
-def comparison_bits(node: Bit):
-    left,right = node.operands
-    if isinstance(left, Bit) and isinstance(right, Bit):
-        return (left,), (right,)
-    if not isinstance(left, UInt) or not isinstance(right, UInt):
-        raise TypeError("Comparison operands must both be Bit or both be UInt")
-    width = max(left.width, right.width)
-    zero = const_bit(False)
-    return (left.bits + (zero,) * (width - left.width), right.bits + (zero,) * (width - right.width),)
-
-
-def circuit_operands(node: Bit):
-    if node.bit_type in (BitType.NE, BitType.LT):
-        left, right = comparison_bits(node)
-        return left + right
-
-    return node.operands
-
-
 def quantumAND(compute: QuantumCircuit,qubitA: int, qubitB: int, target_qubit: int) -> None:
     if qubitA == qubitB:
         compute.cx(qubitA, target_qubit)
@@ -350,6 +329,7 @@ def quantumNE(compute: QuantumCircuit, left, right, target, fresh_scratch):
         any_different = result
 
 def quantumLT(compute: QuantumCircuit, left, right, target, fresh_scratch):
+    # BUG: cooked when size of left and right mismatch
     lower_less = None
 
     for i, (a, b) in enumerate(zip(left, right, strict=True)):
