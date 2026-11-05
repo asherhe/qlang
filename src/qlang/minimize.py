@@ -2,7 +2,8 @@ from .expression import ASTNode, Bit, UInt, BitType, UIntType, node_type
 from .evaluate import evaluate
 
 from math import pi
-from itertools import product
+from itertools import product, combinations
+from collections import defaultdict
 from collections.abc import Callable
 from typing import cast
 
@@ -161,6 +162,24 @@ def expand_to_bits(
                 weights[qubit] = coeff * (1 << idx)
         offset += widths[name]
     return weights
+
+# calculates Pauli coefficients for a linear constraint
+# 0 means identity, 1 << i means Zi, (1 << i) | (i << j) means ZiZj
+def squared_residuals(
+    constant: float, 
+    weights: dict[int, float], 
+    penalty: float,
+) -> dict[int, float]: 
+    terms = defaultdict(float)
+    a = constant + sum(weights.values()) / 2
+    terms[0] += penalty * a * a + sum(w * w for w in weights.values()) / 4
+    for q1, w1 in weights.items(): 
+        terms[1 << q1] += -penalty * a * w1
+        for q2, w2 in weights.items(): 
+            if q1 == q2: 
+                continue
+            terms[(1 << q1) | (1 << q2)] += penalty * w1 * w2 / 2
+    return terms
 
 def qaoa(
     vars: list[Bit | UInt], 
