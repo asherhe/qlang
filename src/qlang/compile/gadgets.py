@@ -92,31 +92,9 @@ def q_NE(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
         any_different = target
     return [any_different]
 
-# @gadget(BitType.LT)
-# def q_LT(qctx: QCtx, node: ASTNode, operands: list[list[Q]]) -> list[Q]:
-#     # BUG: cooked when size of left and right mismatch
-#     lower_less = None
-#
-#     for i, (a, b) in enumerate(zip(left, right, strict=True)):
-#         result = target if i == len(left) - 1 else fresh_scratch()
-#         not_a = fresh_scratch()
-#         quantumNOT(qctx, a, not_a)
-#
-#         if lower_less is None:
-#             quantumAND(qctx, not_a, b, result)
-#         else:
-#             less_here = fresh_scratch()
-#             different = fresh_scratch()
-#             equal_here = fresh_scratch()
-#             carry_less = fresh_scratch()
-#
-#             quantumAND(qctx, not_a, b, less_here)
-#             quantumXOR(qctx, a, b, different)
-#             quantumNOT(qctx, different, equal_here)
-#             quantumAND(qctx, equal_here, lower_less, carry_less)
-#             quantumOR(qctx, less_here, carry_less, result)
-#
-#         lower_less = result
+@gadget(BitType.LT)
+def q_LT(qctx: QCtx, node: ASTNode, operands: list[list[Q]]) -> list[Q]:
+    return []
 
 def q_adder(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q], carry_in: Q | None = None, carry_out: Q | None = None) -> list[Q]:
     """

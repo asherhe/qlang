@@ -1,6 +1,7 @@
 """Gadget execution tests: each @gadget-dispatched operator compiles to a valid phase oracle."""
 
 import itertools
+from collections import defaultdict
 
 import numpy as np
 import pytest
@@ -9,7 +10,7 @@ from qiskit.quantum_info import Statevector
 
 from qlang.compile.compile import compile_oracle
 from qlang.compile.gadgets import _GADGETS
-from qlang.expression import ASTNode, const_bit, var_bit, var_uint, Bit, BitType
+from qlang.expression import ASTNode, const_bit, const_uint, var_bit, var_uint, Bit, BitType
 from qlang.evaluate import evaluate
 
 
@@ -24,8 +25,12 @@ def isolated_registry():
         _GADGETS.update(saved)
 
 
-def assert_phase_oracle(expr):
-    """Compare the public result with an independent Boolean evaluator."""
+def assert_phase_oracle(expr, expected_fn=None):
+    """Compare the public result with an independent evaluator.
+
+    expected_fn, if given, is a plain-python function of the input assignments returning the
+    predicate's truth value. inputs the optimizer removed read as 0, since they cannot matter.
+    """
     oracle = compile_oracle(expr)
     input_qubits = [q for register in oracle.inputs.values() for q in register]
     names = list(oracle.inputs)
@@ -61,7 +66,11 @@ def assert_phase_oracle(expr):
             for name, register in oracle.inputs.items()
             for bit, qubit in enumerate(register)
         )
-        sign = -1 if mock_evaluate(expr, assignments) else 1
+        if expected_fn is not None:
+            truth = expected_fn(defaultdict(int, assignments))
+        else:
+            truth = mock_evaluate(expr, assignments)
+        sign = -1 if truth else 1
         expected = np.zeros_like(expected_superposition)
         expected[basis] = sign
 
@@ -133,3 +142,96 @@ def test_indexed_uint_bit(isolated_registry):
     oracle = assert_phase_oracle(x.bits[2] & x.bits[0])
     assert len(oracle.inputs["x"]) == 3
     assert len(oracle.clean_ancillas) == 1
+
+
+# ---- UInt gadgets: each is checked through a != comparison so the predicate is a single Bit ----
+
+
+def test_add(isolated_registry):
+    ASTNode.reset()
+    a, b, c = var_uint("a", 2), var_uint("b", 2), var_uint("c", 3)
+    assert_phase_oracle((a + b) != c, lambda v: v["a"] + v["b"] != v["c"])
+
+
+def test_add_mismatched_widths(isolated_registry):
+    ASTNode.reset()
+    a, b, c = var_uint("a", 3), var_uint("b", 1), var_uint("c", 4)
+    assert_phase_oracle((a + b) != c, lambda v: v["a"] + v["b"] != v["c"])
+
+
+def test_add_const(isolated_registry):
+    ASTNode.reset()
+    a, c = var_uint("a", 2), var_uint("c", 3)
+    assert_phase_oracle((a + 3) != c, lambda v: v["a"] + 3 != v["c"])
+
+
+def test_sub(isolated_registry):
+    ASTNode.reset()
+    a, b, c = var_uint("a", 2), var_uint("b", 2), var_uint("c", 2)
+    assert_phase_oracle((a - b) != c, lambda v: (v["a"] - v["b"]) % 4 != v["c"])
+
+
+def test_sub_mismatched_widths(isolated_registry):
+    ASTNode.reset()
+    a, b, c = var_uint("a", 3), var_uint("b", 1), var_uint("c", 3)
+    assert_phase_oracle((a - b) != c, lambda v: (v["a"] - v["b"]) % 8 != v["c"])
+
+
+def test_lshift_const(isolated_registry):
+    ASTNode.reset()
+    a, c = var_uint("a", 3), var_uint("c", 3)
+    assert_phase_oracle((a << 1) != c, lambda v: (v["a"] << 1) % 8 != v["c"])
+
+
+def test_lshift_variable(isolated_registry):
+    ASTNode.reset()
+    a, b, c = var_uint("a", 3), var_uint("b", 2), var_uint("c", 3)
+    assert_phase_oracle((a << b) != c, lambda v: (v["a"] << v["b"]) % 8 != v["c"])
+
+
+def test_rshift_const(isolated_registry):
+    ASTNode.reset()
+    a, c = var_uint("a", 3), var_uint("c", 3)
+    assert_phase_oracle((a >> 1) != c, lambda v: (v["a"] >> 1) != v["c"])
+
+
+def test_rshift_variable(isolated_registry):
+    ASTNode.reset()
+    a, b, c = var_uint("a", 3), var_uint("b", 2), var_uint("c", 3)
+    assert_phase_oracle((a >> b) != c, lambda v: (v["a"] >> v["b"]) != v["c"])
+
+
+def test_ne(isolated_registry):
+    ASTNode.reset()
+    a, b = var_uint("a", 3), var_uint("b", 3)
+    assert_phase_oracle(a != b, lambda v: v["a"] != v["b"])
+
+
+def test_ne_mismatched_widths(isolated_registry):
+    ASTNode.reset()
+    a, b = var_uint("a", 3), var_uint("b", 2)
+    assert_phase_oracle(a != b, lambda v: v["a"] != v["b"])
+
+
+def test_ne_const(isolated_registry):
+    ASTNode.reset()
+    a = var_uint("a", 3)
+    assert_phase_oracle(a != const_uint(5, 3), lambda v: v["a"] != 5)
+
+
+def test_lt(isolated_registry):
+    ASTNode.reset()
+    a, b = var_uint("a", 3), var_uint("b", 3)
+    assert_phase_oracle(a < b, lambda v: v["a"] < v["b"])
+
+
+def test_lt_mismatched_widths(isolated_registry):
+    ASTNode.reset()
+    a, b = var_uint("a", 3), var_uint("b", 2)
+    assert_phase_oracle(a < b, lambda v: v["a"] < v["b"])
+
+
+def test_lt_const(isolated_registry):
+    ASTNode.reset()
+    a = var_uint("a", 3)
+    assert_phase_oracle(a < const_uint(5, 3), lambda v: v["a"] < 5)
