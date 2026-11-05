@@ -25,8 +25,8 @@ unexpected passes fail the run via `xfail_strict = true`.
   comparison bounds, arithmetic identities, reassociation, shifts, subtraction,
   carry preservation, width-sensitive parent expressions, source-tree
   immutability, rule registration/precedence, and shared-node traversal.
-- `test_compile.py`: Oracle metadata, independent ancilla defaults, output
-  modes, and the compiler's currently unfinished return contract.
+- `test_compile.py`: phase signs, workspace cleanup, Oracle metadata, indexed
+  input ordering and widths, shared expressions, constants, and invalid input rejection.
 - `test_qalgorithm.py`: two small specification cases for unfinished search.
 - `test_api.py`: existing public package exports.
 
@@ -46,7 +46,7 @@ that the regression is ready to become a normal passing test.
 Current groups: index-zero rejection in public UInt factories; zero parent-width
 validation; missing parent-width error ordering; Bit comparison optimization;
 constant subtraction; overflowing constant left shifts; carry loss in `x+x`;
-width-sensitive constant folding; and unfinished compile/search entry points.
+width-sensitive constant folding; and the unfinished search entry point.
 
 `conftest.py` constructs valid UInt AST fixtures directly because the public
 factory currently rejects every variable UInt at bit index zero. Public factory
@@ -54,5 +54,5 @@ behavior is tested separately, without monkeypatching production behavior.
 The shared expression cache is isolated and restored around each test.
 
 Source modules, project dependencies, and the lockfile are not changed by this
-suite. Compiler/search expected failures are specification placeholders, not
-quantum circuit or algorithm correctness tests.
+suite. Search expected failures are specification placeholders. Compiler tests use
+Qiskit statevectors to check phase marking, input preservation, and workspace cleanup.
