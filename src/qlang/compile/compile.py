@@ -7,6 +7,7 @@ from ..expression import ASTNode, Bit, BitType, UInt, UIntType, node_type
 from ..optimize import optimize_expr
 from .oracle import Oracle
 from .gadgets import quantumNOT, quantumXOR, quantumAND, quantumOR, quantumNE, quantumLT, quantumADD
+from .qubit import AncillaPool, QCtx
 
 def compile_oracle(expr: Bit) -> Oracle:
     """Compile decomposed Boolean logic into a clean phase oracle.
@@ -24,10 +25,14 @@ def compile_oracle(expr: Bit) -> Oracle:
 
     # all ASTNodes in the expression in topological order
     # id -> ASTNode
-    nodes: dict[int, ASTNode] = {id(node): node for node in parse_input(expr)}
+    order = parse_input(expr)
+    nodes: dict[int, ASTNode] = {id(node): node for node in order}
+
+    # Qs for gadget operands are built on demand by keying this dict
+    uses = count_uses(order, expr)
 
     qubit_allocation: dict[int, int] = {}  # id -> qubit index
-    uint_qubits: dict[int, list[int]] = {}       # id -> qubits
+    uint_qubits: dict[int, list[int]] = {} # id -> qubits
     inputs: dict[str, list[int]] = {}      # input name -> qubit indices
     clean_ancillas: list[int] = []         # list[qubit id]
     qubit_label = 0
@@ -84,6 +89,8 @@ def compile_oracle(expr: Bit) -> Oracle:
         clean_ancillas.remove(id(expr))
 
     compute = QuantumCircuit(qubit_label)
+    pool = AncillaPool(compute)
+    qctx = QCtx(compute, pool)
 
     def fresh_scratch() -> int:
         """callback to allocate a new ancilla qubit"""
@@ -155,6 +162,34 @@ def compile_oracle(expr: Bit) -> Oracle:
         clean_ancillas=clean_ancillas,
         dirty_ancillas=[],
     )
+
+
+def count_uses(order: list[ASTNode], root: ASTNode) -> dict[int, int]:
+    """
+    count how many operations consume each qubit-owning Bit.
+
+    order is the AST in topological order.
+
+    returns a table keyed by id()
+    """
+    uses: dict[int, int] = {}
+
+    def use(bit: Bit) -> None:
+        uses[id(bit)] = uses.get(id(bit), 0) + 1
+
+    for node in order:
+        for operand in node.operands:
+            if isinstance(operand, Bit):
+                use(operand)
+            elif isinstance(operand, UInt):
+                for bit in operand.bits:
+                    use(bit)
+
+    # root is implicitly used once
+    if isinstance(root, Bit):
+        use(root)
+
+    return uses
 
 
 def validate_expression(expr: Bit) -> None:

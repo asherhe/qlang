@@ -1,5 +1,5 @@
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from qiskit.circuit import QuantumCircuit, Qubit
 
@@ -7,8 +7,9 @@ from qiskit.circuit import QuantumCircuit, Qubit
 class Q:
     """a single qubit, with extra metadata"""
     qubit: Qubit
-    # this qubit is only used by one operation
-    one_use: bool = False
+    # this qubit is only used by one operation. metadata only: excluded from equality so that
+    # the same physical qubit still matches its pool entry regardless of the annotation
+    one_use: bool = field(default=False, compare=False)
 
 @dataclass
 class QCtx:
