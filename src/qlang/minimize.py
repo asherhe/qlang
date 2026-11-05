@@ -83,6 +83,15 @@ def qaoa_creator(cost_operator: SparsePauliOp):
 
     return state_at, mean_cost
 
+def extract_checker(expr: ASTNode): 
+    left, right = expr.operands
+    left_res, right_res = extract_linear(left), extract_linear(right)
+    if left_res is NotImplemented or right_res is NotImplemented: 
+        return NotImplemented            
+    left_const, left_coeffs = left_res
+    right_const, right_coeffs = right_res
+    return left_const, left_coeffs, right_const, right_coeffs
+
 def extract_linear(expr: ASTNode) -> tuple[int | bool, dict[str, int]]: 
     type = node_type(expr)
     if isinstance(expr, Bit): 
@@ -97,20 +106,20 @@ def extract_linear(expr: ASTNode) -> tuple[int | bool, dict[str, int]]:
         if type == UIntType.VAR: 
             return 0, {cast(str, expr.name): 1}
         if type == UIntType.ADD: 
-            left, right = expr.operands
-            left_const, left_coeffs = extract_linear(left)
-            right_const, right_coeffs = extract_linear(right)
+            res = extract_checker(expr)
+            if res is NotImplemented: 
+                return NotImplemented
+            left_const, left_coeffs, right_const, right_coeffs = res
             const = left_const + right_const
             coeffs = left_coeffs.copy()
             for name, coeff in right_coeffs.items(): 
                 coeffs[name] = coeffs.get(name, 0) + coeff
             return const, coeffs
         if type == UIntType.MUL: 
-            left, right = expr.operands
-            left_const, left_coeffs = extract_linear(left)
-            right_const, right_coeffs = extract_linear(right)
-            if left_coeffs and right_coeffs: 
+            res = extract_checker(expr)
+            if res is NotImplemented: 
                 return NotImplemented
+            left_const, left_coeffs, right_const, right_coeffs = res
             const = left_const * right_const
             coeffs = {}
             if not left_coeffs: 
@@ -122,9 +131,10 @@ def extract_linear(expr: ASTNode) -> tuple[int | bool, dict[str, int]]:
 
 def evaluate_linear(expr: Bit) -> tuple[int | bool, dict[str, int]]: 
     if len(expr.operands) == 2 and expr.bit_type == BitType.EQ: 
-        left, right = expr.operands
-        left_const, left_coeffs = extract_linear(left)
-        right_const, right_coeffs = extract_linear(right)
+        res = extract_checker(expr)
+        if res is NotImplemented: 
+            return NotImplemented
+        left_const, left_coeffs, right_const, right_coeffs = res
         const = left_const - right_const
         coeffs = left_coeffs.copy()
         for name, coeff in right_coeffs.items(): 
