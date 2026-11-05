@@ -181,6 +181,13 @@ def squared_residuals(
             terms[(1 << q1) | (1 << q2)] += penalty * w1 * w2 / 2
     return terms
 
+# calculates Pauli coefficients for an objective applied linearly
+def linear_objective_terms(constant: float, weights: dict[int, float]) -> dict[int, float]: 
+    terms = {0: constant + sum(val for val in weights.values()) / 2}
+    for q, w in weights.items(): 
+        terms[1 << q] = -w / 2
+    return terms
+
 def qaoa(
     vars: list[Bit | UInt], 
     constraint: Bit, 
