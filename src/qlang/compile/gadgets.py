@@ -1,5 +1,5 @@
 from enum import IntEnum
-from typing import Callable
+from typing import Callable, Literal, cast
 
 from qiskit.circuit import QuantumCircuit
 
@@ -79,26 +79,53 @@ def q_EQ(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
     width = max(len(a), len(b))
     qeq = []
 
+    # list[ qubit use policy, qa, qb, qout ]
+    spec: list[tuple[Literal["true", "reuse", "ancilla"], Q | None, Q | None, Q | None]] = []
+    num_ancilla: int = 0
+    # index bits to see which are usable
+    for i in range(width):
+        qa = a[i] if i < len(a) else None
+        qb = b[i] if i < len(b) else None
 
-    with qctx.pool.scratch(width, 1) as (bitwise_eq, qout):
-        for i in range(width):
-            qA = a[i] if i < len(a) else None
-            qB = b[i] if i < len(b) else None
-            qeq = bitwise_eq[i]
+        if qa is not None and qb and qa == qb:
+            spec.append(("true", qa, qb, None))
+        elif qa is not None and qa.one_use:
+            spec.append(("reuse", qa, qb, qa))
+        elif qb is not None and qb.one_use:
+            spec.append(("reuse", qb, qa, qb))
+        else:
+            spec.append(("ancilla", qa, qb, None))
+            num_ancilla += 1
 
-            if qA and qB:
-                qctx.cx(qA, qeq)
-                qctx.cx(qB, qeq)
-            elif qA:
-                qctx.cx(qA, qeq)
-            elif qB:
-                qctx.cx(qB, qeq)
-            qctx.x(qeq)
+    qcontrol: list[Q] = []
+    with qctx.pool.scratch(num_ancilla, 1) as (qtemps, qeq):
+        qtemp_iter = iter(qtemps)
+        qeq = qeq[0]
+        for kind, qa, qb, qout in spec:
+            qout = cast(Q, qout)
+            if kind == "true":
+                pass
+            elif kind == "reuse":
+                qother = qb if qout == qa else qa
+                if qother is not None:
+                    qctx.cx(qother, qout)
+                qctx.x(qout)
+                qcontrol.append(qout)
+            elif kind == "ancilla":
+                qeq = next(qtemp_iter)
+                if qa is not None:
+                    qctx.cx(qa, qeq)
+                elif qb is not None:
+                    qctx.cx(qb, qeq)
+                qctx.x(qeq)
+                qcontrol.append(qeq)
 
-        qout = qout[0]
-        qctx.mcx(list(bitwise_eq), qout)
+        if qcontrol:
+            qctx.mcx(qcontrol, qeq)
+        else:
+            qctx.x(qeq) # just write |1>
 
-    return [qout]
+    return [qeq]
 
 @gadget(BitType.GE)
 def q_GE(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
