@@ -36,15 +36,23 @@ class RulePass:
         """the rules registered for a node type, in registration order"""
         return self.table.get((type(t), t), [])
 
-def rebuild(expr: ASTNode, operands: tuple[ASTNode, ...]) -> ASTNode:
+def rebuild(expr: ASTNode, children: tuple[ASTNode, ...]) -> ASTNode:
     """reconstruct an expression with new operands"""
+    original = expr.children
     # nodes are hash-consed, so unchanged operands mean the node is already canonical
-    if all(old is new for old, new in zip(expr.operands, operands)):
+    if len(original) == len(children) and all(
+        old is new for old, new in zip(original, children)
+    ): 
         return expr
+    if isinstance(expr, UInt) and expr.uint_type == UIntType.BITS: 
+        return bits_uint(tuple(cast(Bit, child) for child in children))
+    if isinstance(expr, Bit) and expr.bit_type == BitType.UINT: 
+        parent = cast(UInt, children[0])
+        return parent.bits[cast(int, expr.index)]
     if isinstance(expr, Bit):
-        return Bit._create(bit_type=expr.bit_type, operands=operands)
+        return Bit._create(bit_type=expr.bit_type, operands=children)
     if isinstance(expr, UInt):
-        return UInt._create(uint_type=expr.uint_type, width=expr.width, operands=operands)
+        return UInt._create(uint_type=expr.uint_type, width=expr.width, operands=children)
     raise TypeError("only Bit and UInt nodes are supported")
 
 def traverse_transform(
@@ -66,8 +74,8 @@ def traverse_transform(
         memo = {}
     key = id(expr)
     if key not in memo:
-        operands = tuple(traverse_transform(op, rule, memo) for op in expr.operands)
-        memo[key] = rule(rebuild(expr, operands))
+        children = tuple(traverse_transform(child, rule, memo) for child in expr.children)
+        memo[key] = rule(rebuild(expr, children))
     return memo[key]
 
 def run_rule_pass(expr: ASTNode, rule_pass: RulePass) -> ASTNode:
