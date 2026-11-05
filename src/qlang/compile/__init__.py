@@ -5,8 +5,8 @@ from typing import Iterable, cast
 from qiskit import QuantumCircuit
 from qiskit.circuit import AncillaQubit
 
-from .expression import ASTNode, Bit, BitType, UInt, UIntType, const_bit, node_type
-from .optimize import optimize_expr
+from ..expression import ASTNode, Bit, BitType, UInt, UIntType, const_bit, node_type
+from ..optimize import optimize_expr
 
 class OutputMode(Enum):
     BIT_FLIP = auto()
