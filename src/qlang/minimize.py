@@ -24,7 +24,7 @@ def decode_state(state: int, widths: dict[str, int]) -> dict[str, int]:
 def constraint_to_cost_op(
     constraint: Bit, 
     widths: dict[str, int], 
-    objective: Callable[[dict[str, int]], float] | None = None,  # a lower result is preferred
+    objective: UInt | None = None,  # a lower result is preferred
     penalty: float = 1.0,
 ) -> SparsePauliOp: 
     num_qubits = sum(widths.values())
@@ -35,7 +35,7 @@ def constraint_to_cost_op(
     for state in range(basis_size): 
         assignment = decode_state(state, widths)
         violation = 0 if evaluate(constraint, assignment) else 1
-        base_cost = 0.0 if objective is None else objective(assignment)
+        base_cost = 0.0 if objective is None else evaluate(objective, assignment)
         energies.append(base_cost + penalty * violation)
 
     terms = []
@@ -206,7 +206,7 @@ def terms_to_op(terms: dict[int, float], num_qubits: int) -> SparsePauliOp:
 def qaoa(
     vars: list[Bit | UInt], 
     constraint: Bit, 
-    objective: Callable[[dict[str, int]], float] | None = None, 
+    objective: UInt | None = None, 
     penalty: float = 1.0, 
     iterations: int = 32, 
 ) -> dict[str, int] | None: 
@@ -226,15 +226,16 @@ def qaoa(
         weights = expand_to_bits(coefficients, widths)
         terms = squared_residuals(float(constant), weights, penalty)
 
-        # objective is an expression, not an equation, so extract() is used instead of evaluate()
-        objective_linear = extract_linear(objective)
-        if objective_linear is NotImplemented: 
-            raise ValueError("linear objective is expected for linear constraint")
-        objective_constant, objective_coeff = objective_linear
-        objective_weights = expand_to_bits(objective_coeff, widths)
-        objective_terms = linear_objective_terms(objective_constant, objective_weights)
-        for mask, coeff in objective_terms.items(): 
-            terms[mask] = terms.get(mask, 0) + coeff
+        if objective is not None: 
+            # objective is an expression, not an equation, so extract() is used instead of evaluate()
+            objective_linear = extract_linear(objective)
+            if objective_linear is NotImplemented: 
+                raise ValueError("linear objective is expected for linear constraint")
+            objective_constant, objective_coeff = objective_linear
+            objective_weights = expand_to_bits(objective_coeff, widths)
+            objective_terms = linear_objective_terms(objective_constant, objective_weights)
+            for mask, coeff in objective_terms.items(): 
+                terms[mask] = terms.get(mask, 0) + coeff
 
         operator = terms_to_op(terms, sum(widths.values()))
     else: 
@@ -247,4 +248,7 @@ def qaoa(
     feasible = (assignment for assignment in observed if evaluate(constraint, assignment))
     if objective is None: 
         return next(feasible, None)
-    return min(feasible, key=objective, default=None)
+
+    def objective_cost(assignment: dict[str, int]) -> int: 
+        return evaluate(objective, assignment)
+    return min(feasible, key=objective_cost, default=None)
