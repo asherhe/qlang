@@ -28,7 +28,7 @@ def decode_state(state: int, widths: dict[str, int]) -> dict[str, int]:
 def constraint_to_cost_op(
     constraint: Bit, 
     widths: dict[str, int], 
-    objective: Callable[[dict[str, int]], float] | None = None,
+    objective: Callable[[dict[str, int]], float] | None = None,  # a lower result is preferred
     penalty: float = 1.0,
 ) -> SparsePauliOp: 
     num_qubits = sum(widths.values())
@@ -61,12 +61,6 @@ def constraint_to_cost_op(
         terms.append(("I" * num_qubits, 0.0))
     return SparsePauliOp.from_list(terms)
 
-cost_operator = SparsePauliOp.from_list([
-  ("II", 2.0),  
-  ("ZZ", 1.5),  # +1.5 cost when bits are equal, -1.5 when bits are unequal
-  ("IZ", -0.5)] # Z op on qubit 0
-)
-
 def qaoa_creator(cost_operator: SparsePauliOp): 
     # one round of cost and mixing
     ansatz = QAOAAnsatz(cost_operator, reps=1, flatten=True)
@@ -95,19 +89,24 @@ def qaoa_creator(cost_operator: SparsePauliOp):
     return state_at, mean_cost
 
 
-x = var_uint("x", width=2)
-y = var_uint("y", width=2)
-widths = {"x": 2, "y": 2}
-constraint = x + y == 3
+x = var_uint("x", width=3)
+y = var_uint("y", width=3)
+widths = {"x": 3, "y": 3}
+constraint = (x < 3) & (y > 1)
+penalty = 4.0
+def objective(a: dict[str, int]) -> float: 
+    expr = a["x"] * (a["y"] - a["x"])
+    return -expr
 
 # grid of gamma and beta values to trial
 grid = [i * pi / 16 for i in range(32)]
 
-operator = constraint_to_cost_op(constraint, widths)
+operator = constraint_to_cost_op(constraint, widths, objective, penalty)
 state_at, mean_cost = qaoa_creator(operator)
 best_angles = min(product(grid, repeat=2), key=mean_cost)
 
 counts = state_at(*best_angles).sample_counts(1024)
 observed = [decode_state(int(bits, 2), widths) for bits in counts]
-solution = next((assignment for assignment in observed if evaluate(constraint, assignment)))
+feasible = (assignment for assignment in observed if evaluate(constraint, assignment))
+solution = min(feasible, key=objective)
 print(solution)
