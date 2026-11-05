@@ -42,6 +42,7 @@ def q_OR(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
     qctx.x(qa)
     qctx.x(qb)
     qctx.ccx(qa, qb, qout)
+    qctx.x(qout)
     # only recycle qa, qb if necessary
     if not qa.one_use:
         qctx.x(qa)
@@ -71,25 +72,26 @@ def q_NOT(qctx: QCtx, node: ASTNode, a: list[Q]) -> list[Q]:
 @gadget(BitType.EQ)
 def q_EQ(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
     width = max(len(a), len(b))
-    bitwise_eq = []
-    for i in range(width):
-        qEq = qctx.pool.alloc()
-        qA = a[i] if i < len(a) else None
-        qB = b[i] if i < len(b) else None
+    qeq = []
+    with qctx.pool.scratch(width, 1) as (bitwise_eq, qout):
+        for i in range(width):
+            qA = a[i] if i < len(a) else None
+            qB = b[i] if i < len(b) else None
+            qeq = bitwise_eq[i]
 
-        if qA and qB:
-            qctx.cx(qA, qEq)
-            qctx.cx(qB, qEq)
-        elif qA:
-            qctx.cx(qA, qEq)
-        elif qB:
-            qctx.cx(qB, qEq)
-        qctx.x(qEq)
-        bitwise_eq.append(qEq)
+            if qA and qB:
+                qctx.cx(qA, qeq)
+                qctx.cx(qB, qeq)
+            elif qA:
+                qctx.cx(qA, qeq)
+            elif qB:
+                qctx.cx(qB, qeq)
+            qctx.x(qeq)
 
-    out_qubit = qctx.pool.alloc()
-    qctx.mcx(bitwise_eq, out_qubit)
-    return [out_qubit]
+        qout = qout[0]
+        qctx.mcx(list(bitwise_eq), qout)
+
+    return [qout]
 
 @gadget(BitType.LT)
 def q_LT(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
