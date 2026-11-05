@@ -8,7 +8,8 @@ import numpy as np
 from qiskit import QuantumCircuit
 from qiskit.quantum_info import Statevector
 
-from qlang.compile import Oracle, OutputMode, compile_oracle, parse_input
+from qlang.compile import Oracle, OutputMode, compile_oracle
+from qlang.compile.compile import parse_input
 from qlang.expression import (
     Bit,
     BitType,
