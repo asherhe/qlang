@@ -84,21 +84,46 @@ def run_rule_pass(expr: ASTNode, rule_pass: RulePass) -> ASTNode:
 # decompose operations that cannot be directly built with quantum gates into primitive operators
 decompose = RulePass("decompose")
 
-@decompose.rule(BitType.EQ)
-def deco_EQ(expr: Bit, a: UInt, b: UInt):
-    """!= is simpler to implement in gates"""
-    return ~(a != b)
+@decompose.rule(BitType.NE)
+def deco_NE(expr: Bit, a: UInt, b: UInt):
+    return ~(a == b)
 
-# collapse all comparison operators to LT to keep compilation clean
+# collapse all comparison operators to GE to keep compilation clean
+@decompose.rule(BitType.LT)
+def deco_LT(expr: Bit, a: UInt, b: UInt):
+    return ~(a >= b)
 @decompose.rule(BitType.GT)
 def deco_GT(expr: Bit, a: UInt, b: UInt):
-    return b < a
+    return ~(b >= a)
 @decompose.rule(BitType.LE)
 def deco_LE(expr: Bit, a: UInt, b: UInt):
-    return ~(b < a)
-@decompose.rule(BitType.GE)
-def deco_GE(expr: Bit, a: UInt, b: UInt):
-    return ~(a < b)
+    return b >= a
+
+# shifting by a constant is only a rewiring of bits, so it needs no gates
+# a shift of a constant is left to the collapse pass, which folds it directly
+
+@decompose.rule(UIntType.LSHIFT)
+def deco_LSHIFT_const(expr: UInt, a: UInt, b: UInt):
+    """a << c  ->  the bits of a moved up by c, filled with 0 and truncated to the shift's width"""
+    if b.uint_type == UIntType.CONST and a.uint_type != UIntType.CONST:
+        c = b.const_value
+        if c == 0:
+            return a
+        if c >= expr.width:
+            return const_uint(0, expr.width)
+        bits = (const_bit(0),) * c + a.bits
+        return bits_uint(bits[:expr.width])
+
+@decompose.rule(UIntType.RSHIFT)
+def deco_RSHIFT_const(expr: UInt, a: UInt, b: UInt):
+    """a >> c  ->  the bits of a moved down by c, dropping the low bits and filling the top with 0"""
+    if b.uint_type == UIntType.CONST and a.uint_type != UIntType.CONST:
+        c = b.const_value
+        if c == 0:
+            return a
+        if c >= a.width:
+            return const_uint(0, expr.width)
+        return bits_uint(a.bits[c:] + (const_bit(0),) * c)
 
 
 # eliminate superfluous expression nodes that are no-ops or can be simplified
@@ -209,6 +234,11 @@ def coll_LT_const_bounds(expr: Bit, a: UInt, b: UInt):
         if bval == 1:
             return ~(a != 0)
 
+@collapse.rule(BitType.LT)
+def coll_LT(expr: Bit, a: UInt, b: UInt):
+    # skip - assume all LT have been decomposed
+    pass
+
 @collapse.rule(BitType.GT)
 def coll_GT(expr: Bit, a: UInt, b: UInt):
     # skip - assume all GT have been decomposed
@@ -217,11 +247,6 @@ def coll_GT(expr: Bit, a: UInt, b: UInt):
 @collapse.rule(BitType.LE)
 def coll_LE(expr: Bit, a: UInt, b: UInt):
     # skip - assume all LE have been decomposed
-    pass
-
-@collapse.rule(BitType.GE)
-def coll_GE(expr: Bit, a: UInt, b: UInt):
-    # skip - assume all GE have been decomposed
     pass
 
 # ---- commutative (Bit, Bit) -> Bit operators ----
@@ -285,9 +310,33 @@ def coll_AND_negation(expr: Bit, a: Bit, b: Bit):
         return const_bit(False)
 
 @collapse.rule(BitType.OR)
-def coll_OR(expr: Bit, a: Bit, b: Bit):
-    # skip - assume all OR have been decomposed
-    pass
+def coll_OR_const_fold(expr: Bit, a: Bit, b: Bit):
+    """direct evaluation of const"""
+    a, b = _sorted_bits(a, b)
+    if a.bit_type == b.bit_type == BitType.CONST:
+        return const_bit(cast(bool, a.value) | cast(bool, b.value))
+
+@collapse.rule(BitType.OR)
+def coll_OR_const_identity(expr: Bit, a: Bit, b: Bit):
+    """
+    0 | b  ->  b
+    1 | b  ->  1
+    """
+    a, b = _sorted_bits(a, b)
+    if a.bit_type == BitType.CONST:
+        return const_bit(True) if a.value else b
+
+@collapse.rule(BitType.OR)
+def coll_OR_self(expr: Bit, a: Bit, b: Bit):
+    """a | a  ->  a"""
+    if a is b:
+        return a
+
+@collapse.rule(BitType.OR)
+def coll_OR_negation(expr: Bit, a: Bit, b: Bit):
+    """a | ~a  ->  1"""
+    if _is_negation_pair(a, b):
+        return const_bit(True)
 
 # ---- UInt operators ----
 
@@ -431,14 +480,6 @@ def coll_LSHIFT_overshift(expr: UInt, a: UInt, b: UInt):
         return const_uint(0, expr.width)
 
 @collapse.rule(UIntType.LSHIFT)
-def coll_LSHIFT_const_route(expr: UInt, a: UInt, b: UInt):
-    """hard-code a << c when c is constant"""
-    if b.uint_type == UIntType.CONST:
-        bits = (const_bit(0),) * b.const_value + a.bits
-        bits = bits[:expr.width]
-        return bits_uint(bits)
-
-@collapse.rule(UIntType.LSHIFT)
 def coll_LSHIFT_merge(expr: UInt, a: UInt, b: UInt):
     """(x << c1) << c2  ->  x << (c1 + c2)"""
     # expr.width <= a.width: bits the inner shift truncated would also be truncated by the outer width
@@ -474,14 +515,6 @@ def coll_RSHIFT_overshift(expr: UInt, a: UInt, b: UInt):
         return const_uint(0, expr.width)
 
 @collapse.rule(UIntType.RSHIFT)
-def coll_RSHIFT_const_route(expr: UInt, a: UInt, b: UInt):
-    """hard-code a >> c when c is constant"""
-    if b.uint_type == UIntType.CONST:
-        bits = a.bits + (const_bit(0),) * b.const_value
-        bits = bits[-a.width:]
-        return bits_uint(bits)
-
-@collapse.rule(UIntType.RSHIFT)
 def coll_RSHIFT_merge(expr: UInt, a: UInt, b: UInt):
     """(x >> c1) >> c2  ->  x >> (c1 + c2)"""
     if a.uint_type == UIntType.RSHIFT and b.uint_type == UIntType.CONST:
@@ -491,6 +524,32 @@ def coll_RSHIFT_merge(expr: UInt, a: UInt, b: UInt):
             if total >= x.width:
                 return const_uint(0, expr.width)
             return x >> total
+
+
+# ---- BITS ----
+
+@collapse.rule(UIntType.BITS)
+def coll_BITS_nested(expr: UInt):
+    """
+    route the bits that are taken from a BITS back to the bits it was built from
+    bits_uint(..., y[i], ...)  ->  bits_uint(..., y.bits[i], ...)  when y is a BITS
+    """
+    routed = tuple(
+        cast(UInt, bit.parent_uint).bits[cast(int, bit.index)]
+        if bit.bit_type == BitType.UINT and cast(UInt, bit.parent_uint).uint_type == UIntType.BITS
+        else bit
+        for bit in expr.bits
+    )
+    if any(old is not new for old, new in zip(expr.bits, routed)):
+        return bits_uint(routed)
+
+
+@collapse.rule(UIntType.BITS)
+def coll_BITS_const(expr: UInt):
+    """a BITS made only of constant bits is a constant"""
+    if all(bit.bit_type == BitType.CONST for bit in expr.bits):
+        value = sum(1 << i for i, bit in enumerate(expr.bits) if bit.value)
+        return const_uint(value, expr.width)
 
 
 def optimize_expr(expr: ASTNode) -> ASTNode:
