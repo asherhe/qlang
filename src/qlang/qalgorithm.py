@@ -191,7 +191,7 @@ def _try_k(
 
 def search(
     params: Mapping[str, Iterable[int]],
-    pred: Bit # expression tree for the condition
+    pred: Bit | UInt # expression tree for the condition
 ) -> dict[str, int] | None:
     """
     search for solutions in the space of params that satisfy pred
@@ -205,6 +205,10 @@ def search(
         name: set(values)
         for name, values in params.items()
     }
+
+    # a UInt condition is true when it is non-zero
+    if isinstance(pred, UInt):
+        pred = pred != 0
 
     # compile_oracle only accepts decomposed logic; evaluate below keeps using pred
     oracle = compile_oracle(cast(Bit, optimize_expr(pred)))
