@@ -259,28 +259,28 @@ def test_eq_const(isolated_registry):
     assert_phase_oracle(a == const_uint(5, 3), lambda v: v["a"] == 5, cases=CASES_TEST_EQ_CONST)
 
 
-CASES_TEST_LT = [{"a": 0, "b": 0}, {"a": 0, "b": 1}, {"a": 3, "b": 5}, {"a": 5, "b": 3}, {"a": 4, "b": 4}, {"a": 7, "b": 0}, {"a": 0, "b": 7}, {"a": 3, "b": 4}, {"a": 4, "b": 3}]
+CASES_TEST_GE = [{"a": 0, "b": 0}, {"a": 0, "b": 1}, {"a": 3, "b": 5}, {"a": 5, "b": 3}, {"a": 4, "b": 4}, {"a": 7, "b": 0}, {"a": 0, "b": 7}, {"a": 3, "b": 4}, {"a": 4, "b": 3}]
 
 
-def test_lt(isolated_registry):
+def test_ge(isolated_registry):
     ASTNode.reset()
     a, b = var_uint("a", 3), var_uint("b", 3)
-    assert_phase_oracle(a < b, lambda v: v["a"] < v["b"], cases=CASES_TEST_LT)
+    assert_phase_oracle(a >= b, lambda v: v["a"] >= v["b"], cases=CASES_TEST_GE)
 
 
-CASES_TEST_LT_MISMATCHED_WIDTHS = [{"a": 0, "b": 3}, {"a": 3, "b": 3}, {"a": 4, "b": 3}, {"a": 2, "b": 3}, {"a": 7, "b": 0}, {"a": 1, "b": 2}, {"a": 4, "b": 0}]
+CASES_TEST_GE_MISMATCHED_WIDTHS = [{"a": 0, "b": 3}, {"a": 3, "b": 3}, {"a": 4, "b": 3}, {"a": 2, "b": 3}, {"a": 7, "b": 0}, {"a": 1, "b": 2}, {"a": 4, "b": 0}]
 
 
-def test_lt_mismatched_widths(isolated_registry):
+def test_ge_mismatched_widths(isolated_registry):
     ASTNode.reset()
     a, b = var_uint("a", 3), var_uint("b", 2)
-    assert_phase_oracle(a < b, lambda v: v["a"] < v["b"], cases=CASES_TEST_LT_MISMATCHED_WIDTHS)
+    assert_phase_oracle(a >= b, lambda v: v["a"] >= v["b"], cases=CASES_TEST_GE_MISMATCHED_WIDTHS)
 
 
-CASES_TEST_LT_CONST = [{"a": 0}, {"a": 4}, {"a": 5}, {"a": 6}, {"a": 7}, {"a": 3}, {"a": 1}]
+CASES_TEST_GE_CONST = [{"a": 0}, {"a": 4}, {"a": 5}, {"a": 6}, {"a": 7}, {"a": 3}, {"a": 1}]
 
 
-def test_lt_const(isolated_registry):
+def test_ge_const(isolated_registry):
     ASTNode.reset()
     a = var_uint("a", 3)
-    assert_phase_oracle(a < const_uint(5, 3), lambda v: v["a"] < 5, cases=CASES_TEST_LT_CONST)
+    assert_phase_oracle(a >= const_uint(5, 3), lambda v: v["a"] >= 5, cases=CASES_TEST_GE_CONST)
