@@ -129,7 +129,7 @@ def compile_oracle(expr: Bit) -> Oracle:
         elif isinstance(node, Bit):
             node_qubit = qubit_allocation[node_id]
             # check if primitive operator
-            if kind not in (BitType.NOT, BitType.XOR, BitType.AND, BitType.OR, BitType.NE, BitType.GT):
+            if kind not in (BitType.NOT, BitType.XOR, BitType.AND, BitType.OR, BitType.NE, BitType.LT):
                 raise TypeError(f"cannot compile non-primitive bit operator {node}")
 
             if kind == BitType.NOT:
@@ -146,12 +146,12 @@ def compile_oracle(expr: Bit) -> Oracle:
                     quantumOR(compute, qubitA, qubitB, node_qubit)
             elif kind in (BitType.NE, BitType.LT):
                 # comparison operators
-                op_qubits = [[qubit_allocation[id(b)] for b in op.bits] for op in node.operands]
+                left, right = comparison_qubits(node, qubit_allocation, fresh_scratch)
 
                 if kind == BitType.NE:
-                    quantumNE(compute, op_qubits[0], op_qubits[1], node_qubit, fresh_scratch)
+                    quantumNE(compute, left, right, node_qubit, fresh_scratch)
                 else:
-                    quantumLT(compute, op_qubits[0], op_qubits[1], node_qubit, fresh_scratch)
+                    quantumLT(compute, left, right, node_qubit, fresh_scratch)
 
         elif isinstance(node, UInt):
             # check if primitive operator
@@ -164,7 +164,7 @@ def compile_oracle(expr: Bit) -> Oracle:
 
             if kind == UIntType.ADD:
                 sum_width = max(len(q) for q in op_qubits)
-                quantumADD(compute, op_qubits[0], op_qubits[1], node_qubits[:sum_width-1], fresh_scratch, carry_out=node_qubits[sum_width])
+                quantumADD(compute, op_qubits[0], op_qubits[1], node_qubits[:sum_width], fresh_scratch, carry_out=node_qubits[sum_width])
         else:
             raise TypeError(f"compilation of {type(node)} nodes not supported")
 
@@ -311,6 +311,22 @@ def quantumNOT(compute: QuantumCircuit, qubitA: int, target_qubit: int) -> None:
     compute.x(target_qubit)
     compute.cx(qubitA, target_qubit)
 
+def comparison_qubits(node: Bit, qubit_allocation: dict[int, int], fresh_scratch) -> tuple[list[int], list[int]]:
+    """
+    temporary patch: match comparison operand widths
+
+    the shorter operand is extended with scratch qubits, which stay |0> and so
+    act as leading zero bits
+    """
+    left, right = (
+        [qubit_allocation[id(bit)] for bit in (op.bits if isinstance(op, UInt) else (op,))]
+        for op in node.operands
+    )
+    width = max(len(left), len(right))
+    left += [fresh_scratch() for _ in range(width - len(left))]
+    right += [fresh_scratch() for _ in range(width - len(right))]
+    return left, right
+
 def quantumNE(compute: QuantumCircuit, left, right, target, fresh_scratch):
     if len(left) == 1:
         quantumXOR(compute, left[0], right[0], target)
@@ -329,7 +345,6 @@ def quantumNE(compute: QuantumCircuit, left, right, target, fresh_scratch):
         any_different = result
 
 def quantumLT(compute: QuantumCircuit, left, right, target, fresh_scratch):
-    # BUG: cooked when size of left and right mismatch
     lower_less = None
 
     for i, (a, b) in enumerate(zip(left, right, strict=True)):
