@@ -6,6 +6,7 @@ from qiskit import QuantumCircuit
 from qiskit.circuit import AncillaQubit
 
 from .expression import ASTNode, Bit, BitType, UInt, UIntType, const_bit, node_type
+from .optimize import optimize_expr
 
 class OutputMode(Enum):
     BIT_FLIP = auto()
@@ -44,6 +45,8 @@ def compile_oracle(expr: Bit) -> Oracle:
             "compile_oracle expects a Bit expression; decompose UInt expressions first"
         )
     validate_expression(expr)
+
+    expr = cast(Bit, optimize_expr(expr))
 
     # all ASTNodes in the expression in topological order
     # id -> ASTNode
