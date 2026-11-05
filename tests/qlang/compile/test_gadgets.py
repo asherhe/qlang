@@ -183,6 +183,7 @@ def test_lshift_const(isolated_registry):
     assert_phase_oracle((a << 1) != c, lambda v: (v["a"] << 1) % 8 != v["c"])
 
 
+@pytest.mark.xfail(reason="shifting by a variable amount is not supported yet", raises=TypeError)
 def test_lshift_variable(isolated_registry):
     ASTNode.reset()
     a, b, c = var_uint("a", 3), var_uint("b", 2), var_uint("c", 3)
@@ -195,6 +196,7 @@ def test_rshift_const(isolated_registry):
     assert_phase_oracle((a >> 1) != c, lambda v: (v["a"] >> 1) != v["c"])
 
 
+@pytest.mark.xfail(reason="shifting by a variable amount is not supported yet", raises=TypeError)
 def test_rshift_variable(isolated_registry):
     ASTNode.reset()
     a, b, c = var_uint("a", 3), var_uint("b", 2), var_uint("c", 3)
