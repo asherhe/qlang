@@ -14,11 +14,24 @@ from qiskit import QuantumCircuit, ClassicalRegister, transpile
 
 import math
 
-# compute the optimal k based on the formula
-def _optimal_k(num_input_qubits: int, num_solutions: int = 1) -> int:
+# how many of the most frequent measurements to check for each k
+# small on purpose: only checking the top results means amplification has to
+# find the answer. checking every result would just be a classical brute force
+# more than 1 because the oracle does not know about params, so an amplified
+# solution outside the allowed values can rank first
+TOP_RESULTS = 3
+
+def _max_k(num_input_qubits: int) -> int:
+    """
+    the largest k worth trying
+
+    the best k is about (pi / 4) * sqrt(N / M) for N inputs and M solutions.
+    M = 1 gives the largest value, so no search should need much more than this
+    the + 1 covers cases where the rounded value lands on a bad k: for a | b,
+    N = 4 and M = 3, k = 1 has a 0% chance of a solution but k = 2 has 75%
+    """
     N = 2 ** num_input_qubits
-    theta = math.asin(math.sqrt(num_solutions / N))
-    return max(0, round(math.pi / (4 * theta) - 0.5))
+    return math.ceil(math.pi / 4 * math.sqrt(N)) + 1
 
 def _phase_oracle(
     oracle: Oracle 
@@ -118,28 +131,17 @@ def _grover_circuit(
 
     return qc, inputs
 
-def search(
-    params: dict[str, Iterable[int]],
-    pred: Bit # expression tree for the condition
+def _try_k(
+    oracle: Oracle,
+    pred: Bit,
+    allowed: dict[str, set[int]],
+    k: int
 ) -> dict[str, int] | None:
     """
-    search for solutions in the space of params that satisfy pred
+    run grover with k iterations and check the most frequent results
 
-    the search domain is the cartesian product of each parameter's search space specified in params.
-
-    return one solution set that satisfy the predicate
+    return a valid solution, or None if none of the top results are solutions
     """
-
-    allowed = {
-        name: set(values)
-        for name, values in params.items()
-    }
-
-    # compile_oracle only accepts decomposed logic; evaluate below keeps using pred
-    oracle = compile_oracle(cast(Bit, optimize_expr(pred)))
-
-    k = _optimal_k(sum(len(q) for q in oracle.inputs.values()))
-
     # inputs: the sum of the variables' binary width
     circuit, inputs = _grover_circuit(oracle, k=k)
 
@@ -157,7 +159,11 @@ def search(
     counts = result.get_counts()
 
     # most frequent outcomes first: after amplification, solutions dominate
-    for bitstring, _ in sorted(counts.items(), key=lambda kv: kv[1], reverse=True):
+    ranked = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)
+
+    # stop at TOP_RESULTS: if the wrong k was used, the top results are not
+    # solutions, and search moves on to the next k
+    for bitstring, _ in ranked[:TOP_RESULTS]:
         bits = bitstring[::-1]
 
         measured_by_qubit = {}
@@ -190,6 +196,41 @@ def search(
         if evaluate(pred, assignment):
             return assignment
 
+    return None
+
+def search(
+    params: dict[str, Iterable[int]],
+    pred: Bit # expression tree for the condition
+) -> dict[str, int] | None:
+    """
+    search for solutions in the space of params that satisfy pred
+
+    the search domain is the cartesian product of each parameter's search space specified in params.
+
+    return one solution set that satisfy the predicate
+    """
+
+    allowed = {
+        name: set(values)
+        for name, values in params.items()
+    }
+
+    # compile_oracle only accepts decomposed logic; evaluate below keeps using pred
+    oracle = compile_oracle(cast(Bit, optimize_expr(pred)))
+
+    num_input_qubits = sum(len(q) for q in oracle.inputs.values())
+
+    # the best k depends on the number of solutions, which we don't know yet.
+    # too many iterations overshoots and makes solutions unlikely, so start low
+    # and stop at the first k whose top results include a solution
+    # k starts at 1 because k = 0 is just random guessing
+    for k in range(1, _max_k(num_input_qubits) + 1):
+        assignment = _try_k(oracle, pred, allowed, k)
+
+        if assignment is not None:
+            return assignment
+
+    # no k found a solution, so there most likely is none
     return None
 
 # 3x+y=5
