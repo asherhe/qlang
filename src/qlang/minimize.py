@@ -1,18 +1,12 @@
-from .expression import ASTNode, Bit, UInt, var_uint, bits_uint
-from .compile import Oracle, compile_oracle, OutputMode
+from .expression import Bit, UInt
 from .evaluate import evaluate
 
-import numpy as np
 from math import pi
 from itertools import product
 from collections.abc import Callable
 
-from qiskit_aer import AerSimulator
-from qiskit import QuantumCircuit, ClassicalRegister, transpile
 from qiskit.quantum_info import SparsePauliOp, Statevector
 from qiskit.circuit.library import QAOAAnsatz
-
-# optimizing circuit C(a, b) = 3[a == b] + a
 
 # converts a quantum state into decipherable values
 # based on order of qubits and their widths
