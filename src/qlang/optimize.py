@@ -504,6 +504,24 @@ def coll_RSHIFT_merge(expr: UInt, a: UInt, b: UInt):
             return x >> total
 
 
+# ---- BITS ----
+
+@collapse.rule(UIntType.BITS)
+def coll_BITS_nested(expr: UInt):
+    """
+    route the bits that are taken from a BITS back to the bits it was built from
+    bits_uint(..., y[i], ...)  ->  bits_uint(..., y.bits[i], ...)  when y is a BITS
+    """
+    routed = tuple(
+        cast(UInt, bit.parent_uint).bits[cast(int, bit.index)]
+        if bit.bit_type == BitType.UINT and cast(UInt, bit.parent_uint).uint_type == UIntType.BITS
+        else bit
+        for bit in expr.bits
+    )
+    if any(old is not new for old, new in zip(expr.bits, routed)):
+        return bits_uint(routed)
+
+
 def optimize_expr(expr: ASTNode) -> ASTNode:
     """
     apply simplifications to minimize the complexity and gate requirements of the expression tree

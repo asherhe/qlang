@@ -6,7 +6,7 @@ import operator
 import pytest
 
 from qlang.evaluate import evaluate
-from qlang.expression import BitType, UIntType, const_bit, const_uint, var_uint
+from qlang.expression import Bit, BitType, UIntType, bits_uint, const_bit, const_uint, var_bit, var_uint
 from qlang.optimize import RulePass, decompose, optimize_expr, run_rule_pass, traverse_transform
 
 
@@ -224,3 +224,31 @@ def test_traversal_visits_shared_nodes_once_bottom_up(p, q):
     assert traverse_transform(root, record) is root
     assert len(visited) == 2
     assert visited[0] is shared and visited[1] is root
+
+
+def _bit_of(uint, index):
+    """the Bit that selects position index of a UInt, built the way a UInt owns its bits"""
+    return Bit._create(bit_type=BitType.UINT, index=index, parent_uint=uint)
+
+
+def test_bits_of_bits_route_to_original_sources():
+    p, q, r = var_bit("p"), var_bit("q"), var_bit("r")
+    inner = bits_uint((p, q, r))
+    outer = bits_uint((_bit_of(inner, 2), _bit_of(inner, 0), r))
+    result = optimize_expr(outer)
+    assert result.uint_type == UIntType.BITS
+    assert result.bits == (r, p, r)
+
+
+def test_bits_of_bits_route_through_several_levels():
+    p, q = var_bit("p"), var_bit("q")
+    first = bits_uint((p, q))
+    second = bits_uint((_bit_of(first, 1), _bit_of(first, 0)))
+    third = bits_uint((_bit_of(second, 1), _bit_of(second, 0)))
+    assert optimize_expr(third).bits == (p, q)
+
+
+def test_bits_of_non_bits_uint_are_not_rerouted():
+    x = var_uint("x", 2)
+    node = bits_uint((x.bits[1], x.bits[0]))
+    assert optimize_expr(node) is node
