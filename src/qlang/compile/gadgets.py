@@ -47,16 +47,9 @@ def q_OR(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
 
     # in-place is not reversible so we must tank the ancilla
     qout = qctx.pool.alloc()
-    
-    qctx.x(qa)
-    qctx.x(qb)
+    qctx.cx(qa, qout)
+    qctx.cx(qb, qout)
     qctx.ccx(qa, qb, qout)
-    qctx.x(qout)
-    # only recycle qa, qb if necessary
-    if not qa.one_use:
-        qctx.x(qa)
-    if not qb.one_use:
-        qctx.x(qb)
     return [qout]
 
 @gadget(BitType.XOR)
