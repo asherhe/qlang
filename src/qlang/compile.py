@@ -1,3 +1,4 @@
+import itertools
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import Iterable, cast
@@ -125,6 +126,11 @@ def compile_oracle(expr: Bit) -> Oracle:
             # initialize |1> CONST bits
             if isinstance(node, Bit) and kind == BitType.CONST and node.value:
                 compute.x(qubit_allocation[node_id])
+            # const_bit is cached, so a CONST UInt's bits are found by position
+            elif isinstance(node, UInt) and kind == UIntType.CONST:
+                for bit, qubit in zip(node.bits, uint_qubits[node_id], strict=True):
+                    if bit.value:
+                        compute.x(qubit)
         # translate operator nodes
         elif isinstance(node, Bit):
             node_qubit = qubit_allocation[node_id]
@@ -146,7 +152,7 @@ def compile_oracle(expr: Bit) -> Oracle:
                     quantumOR(compute, qubitA, qubitB, node_qubit)
             elif kind in (BitType.NE, BitType.LT):
                 # comparison operators
-                left, right = comparison_qubits(node, qubit_allocation, fresh_scratch)
+                left, right = comparison_qubits(node, qubit_allocation, uint_qubits, fresh_scratch)
 
                 if kind == BitType.NE:
                     quantumNE(compute, left, right, node_qubit, fresh_scratch)
@@ -159,8 +165,8 @@ def compile_oracle(expr: Bit) -> Oracle:
                 raise TypeError(f"cannot compile non-primitive bit operator {node}")
 
             # all uint operations are binary so far
-            op_qubits = [[qubit_allocation[id(b)] for b in op.bits] for op in node.operands]
-            node_qubits = [qubit_allocation[id(b)] for b in node.bits]
+            op_qubits = [uint_qubits[id(op)] for op in node.operands]
+            node_qubits = uint_qubits[node_id]
 
             if kind == UIntType.ADD:
                 sum_width = max(len(q) for q in op_qubits)
@@ -311,7 +317,7 @@ def quantumNOT(compute: QuantumCircuit, qubitA: int, target_qubit: int) -> None:
     compute.x(target_qubit)
     compute.cx(qubitA, target_qubit)
 
-def comparison_qubits(node: Bit, qubit_allocation: dict[int, int], fresh_scratch) -> tuple[list[int], list[int]]:
+def comparison_qubits(node: Bit, qubit_allocation: dict[int, int], uint_qubits: dict[int, list[int]], fresh_scratch) -> tuple[list[int], list[int]]:
     """
     temporary patch: match comparison operand widths
 
@@ -319,7 +325,7 @@ def comparison_qubits(node: Bit, qubit_allocation: dict[int, int], fresh_scratch
     act as leading zero bits
     """
     left, right = (
-        [qubit_allocation[id(bit)] for bit in (op.bits if isinstance(op, UInt) else (op,))]
+        list(uint_qubits[id(op)]) if isinstance(op, UInt) else [qubit_allocation[id(op)]]
         for op in node.operands
     )
     width = max(len(left), len(right))
@@ -369,60 +375,30 @@ def quantumLT(compute: QuantumCircuit, left, right, target, fresh_scratch):
         lower_less = result
     
 def quantumADD(compute: QuantumCircuit, a: list[int], b: list[int], out: list[int], fresh_scratch, carry_in=None, carry_out=None):
-    """
-    construct a quantum uint addition circuit
-
-    PARAMETERS
-    ----------
-    a, b       : list of qubits, LSB-first. can be any length
-    out        : list of qubits, LSB-last. length is the max of a and b
-    carry_in   : qubit for carry input
-    carry_out  : qubit for carry output
-    """
-
-    # uses cuccaro adder, 1 ancila cubit required
-    # TODO: draper adder if in-place allowed
-    
-    # normalize to len(a) >= len(b)
+    """out = a + b. a and b are only read; out and carry_out must start at |0>"""
     if len(a) < len(b):
-        tmp = a
-        a = b
-        b = tmp
-    assert(len(a) == len(out))
+        a, b = b, a
+    assert len(a) == len(out)
 
-    # TODO: use carry_in for ancilla if it is not used anywhere else
-    carry_ancilla = fresh_scratch()
-    # copy carry_in state
-    if carry_in is not None:
-        compute.cx(carry_in, carry_ancilla)
+    carry = carry_in
+    for i in range(len(a)):
+        # the bits meeting in this column: a[i], b[i] and the carry
+        column = [a[i]]
+        if i < len(b):
+            column.append(b[i])
+        if carry is not None:
+            column.append(carry)
 
-    # copy b onto out
-    for i in range(len(b)):
-        compute.cx(b[i], out[i])
+        # sum bit = XOR of the column
+        for qubit in column:
+            compute.cx(qubit, out[i])
 
-    # forward sweep
-    for i in range(len(b)):
-        compute.cx(carry_ancilla, out[i])
-        compute.cx(carry_ancilla, a[i])
-        compute.ccx(a[i], out[i], carry_ancilla)
-        
-    # forward sweep where b is 0
-    # simplifies to a toffoli gate
-    for i in range(len(b), len(a)):
-        compute.cx(carry_ancilla, a[i])
+        is_last = i == len(a) - 1
+        if is_last and carry_out is None:
+            break
 
-    # copy carry_out state
-    if carry_out is not None:
-        compute.cx(carry_ancilla, carry_out)
-
-    # forward sweep
-    for i in range(len(a)-1, len(b)-1, -1):
-        compute.cx(carry_ancilla, a[i])
-        
-    # forward sweep where b is 0
-    # simplifies to a toffoli gate
-    for i in range(len(b)-1, -1, -1):
-        compute.ccx(a[i], out[i], carry_ancilla)
-        compute.cx(carry_ancilla, a[i])
-        compute.cx(carry_ancilla, out[i])
-
+        # next carry = majority of the column: ab ^ ac ^ bc
+        next_carry = carry_out if is_last else fresh_scratch()
+        for first, second in itertools.combinations(column, 2):
+            compute.ccx(first, second, next_carry)
+        carry = next_carry
