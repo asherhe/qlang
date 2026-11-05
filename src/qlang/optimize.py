@@ -311,9 +311,33 @@ def coll_AND_negation(expr: Bit, a: Bit, b: Bit):
         return const_bit(False)
 
 @collapse.rule(BitType.OR)
-def coll_OR(expr: Bit, a: Bit, b: Bit):
-    # skip - assume all OR have been decomposed
-    pass
+def coll_OR_const_fold(expr: Bit, a: Bit, b: Bit):
+    """direct evaluation of const"""
+    a, b = _sorted_bits(a, b)
+    if a.bit_type == b.bit_type == BitType.CONST:
+        return const_bit(cast(bool, a.value) | cast(bool, b.value))
+
+@collapse.rule(BitType.OR)
+def coll_OR_const_identity(expr: Bit, a: Bit, b: Bit):
+    """
+    0 | b  ->  b
+    1 | b  ->  1
+    """
+    a, b = _sorted_bits(a, b)
+    if a.bit_type == BitType.CONST:
+        return const_bit(True) if a.value else b
+
+@collapse.rule(BitType.OR)
+def coll_OR_self(expr: Bit, a: Bit, b: Bit):
+    """a | a  ->  a"""
+    if a is b:
+        return a
+
+@collapse.rule(BitType.OR)
+def coll_OR_negation(expr: Bit, a: Bit, b: Bit):
+    """a | ~a  ->  1"""
+    if _is_negation_pair(a, b):
+        return const_bit(True)
 
 # ---- UInt operators ----
 
