@@ -218,10 +218,6 @@ def validate_expression(expr: Bit) -> None:
         elif isinstance(node, UInt):
             if not isinstance(node.uint_type, UIntType):
                 raise TypeError("A UInt node's uint_type must be a UIntType member")
-            if node.uint_type not in (UIntType.VAR, UIntType.BITS):
-                raise ValueError(
-                    f"UInt {node.uint_type.name} nodes must be decomposed before compiling"
-                )
             expected = node.expected_operands
             if len(node.operands) != expected:
                 raise ValueError(
