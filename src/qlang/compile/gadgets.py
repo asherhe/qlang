@@ -64,24 +64,34 @@ def q_NOT(qctx: QCtx, node: ASTNode, a: list[Q]) -> list[Q]:
     qctx.cx(qubitA, target_qubit)
     return [target_qubit]
 
-# @gadget(BitType.NE)
-# def q_NE(qctx: QCtx, node: ASTNode, operands: list[list[Q]]) -> list[Q]:
-#     if len(left) == 1:
-#         quantumXOR(qctx, left[0], right[0], target)
-#         return
-#
-#     differences = []
-#     for a, b in zip(left, right, strict=True):
-#         difference = fresh_scratch()
-#         quantumXOR(qctx, a, b, difference)
-#         differences.append(difference)
-#
-#     any_different = differences[0]
-#     for i, difference in enumerate(differences[1:], start=1):
-#         result = target if i == len(differences) - 1 else fresh_scratch()
-#         quantumOR(qctx, any_different, difference, result)
-#         any_different = result
-#
+@gadget(BitType.NE)
+def q_NE(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
+    width = max(len(a), len(b))
+    differences = []
+    for i in range(width):
+        diff = qctx.pool.alloc()
+        qA = a[i] if i < len(a) else None
+        qB = b[i] if i < len(b) else None
+
+        if qA and qB:
+            qctx.cx(qA, diff)
+            qctx.cx(qB, diff)
+        elif qA:
+            qctx.cx(qA, diff)
+        elif qB:
+            qctx.cx(qB, diff)
+        differences.append(diff)
+
+    # OR the differences together
+    any_different = differences[0]
+    for i in range(1, len(differences)):
+        target = differences[i] if i == len(differences) - 1 else qctx.pool.alloc()
+        qctx.cx(any_different, target)
+        qctx.cx(differences[i], target)
+        qctx.ccx(any_different, differences[i], target)
+        any_different = target
+    return [any_different]
+
 # @gadget(BitType.LT)
 # def q_LT(qctx: QCtx, node: ASTNode, operands: list[list[Q]]) -> list[Q]:
 #     # BUG: cooked when size of left and right mismatch
@@ -180,7 +190,7 @@ def q_SUB(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
     for i in range(width):
         qctx.cx(neg_b[i])
         if i < len(b):
-            qctx.cnot(b[i], neg_b[i])
+            qctx.cx(b[i], neg_b[i])
 
     carry_1 = qctx.pool.alloc()
     qctx.x(carry_1)
