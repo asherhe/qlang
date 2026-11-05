@@ -193,22 +193,24 @@ def compile_oracle(expr: Bit) -> Oracle:
 
 
 def validate_expression(expr: Bit) -> None:
-    """Check that every reachable node is supported before allocating qubits."""
+    """Check expression structure and metadata before allocating qubits."""
     # visiting catches circular dependencies; visited skips shared nodes that
     # have already passed every check. Neither set changes the expression.
     visiting: set[int] = set()
     visited: set[int] = set()
 
     def visit(node: ASTNode) -> None:
+        if not isinstance(node, (Bit, UInt)):
+            raise TypeError(f"Expected a Bit or UInt node, got {type(node).__name__}")
+
         node_id = id(node)
         if node_id in visiting:
             raise ValueError("Cycle detected in expression graph")
         if node_id in visited:
             return
 
-        children = node.children
-        if not isinstance(children, tuple):
-            raise TypeError("Node children must be a tuple; use (operand,) for one operand")
+        if not isinstance(node.operands, tuple):
+            raise TypeError("Node operands must be a tuple; use (operand,) for one operand")
 
         if isinstance(node, Bit):
             # BitType is an IntEnum: checking its class prevents an unrelated
@@ -225,22 +227,70 @@ def validate_expression(expr: Bit) -> None:
             elif node.bit_type == BitType.CONST:
                 if type(node.value) is not bool:
                     raise TypeError("constant bit nodes should be true or false")
+            elif node.bit_type in (BitType.NOT, BitType.AND, BitType.OR, BitType.XOR):
+                if any(not isinstance(operand, Bit) for operand in node.operands):
+                    raise TypeError("Boolean operations require Bit operands")
+            else:
+                left, right = node.operands
+                if not (
+                    isinstance(left, Bit) and isinstance(right, Bit)
+                    or isinstance(left, UInt) and isinstance(right, UInt)
+                ):
+                    raise TypeError("comparison operands must both be Bit or both be UInt")
         elif isinstance(node, UInt):
             if not isinstance(node.uint_type, UIntType):
-                raise TypeError("A UInt node's uint_type must be a UIntType member")
+                raise TypeError("a UInt node's uint_type must be a UIntType member")
             expected = node.expected_operands
             if len(node.operands) != expected:
                 raise ValueError(
                     f"{node.uint_type.name} expects {expected} operand(s), got {len(node.operands)}"
                 )
-        else:
-            raise TypeError(f"unsupported node type {type(node).__name__}")
+            if type(node.width) is not int or node.width < 1:
+                raise ValueError("UInt width must be a positive integer")
+            if node.uint_type == UIntType.VAR:
+                if not isinstance(node.name, str) or not node.name.strip():
+                    raise ValueError("input needs a name")
+            if not isinstance(node.bits, tuple):
+                raise TypeError("UInt bits must be a tuple")
+            if len(node.bits) != node.width:
+                raise ValueError("UInt must contain exactly width bits")
+            if any(not isinstance(bit, Bit) for bit in node.bits):
+                raise TypeError("UInt bits must contain only Bit nodes")
+            if any(not isinstance(operand, UInt) for operand in node.operands):
+                raise TypeError("Integer operations require UInt operands")
 
-        # Recurse so validation also reaches deeply nested operands. A valid
-        # leaf has an empty tuple, which naturally ends that branch.
+            # Owned output bits point back to this UInt. Inspect their metadata
+            # directly, because recursively visiting them would revisit the owner.
+            # BITS wrappers instead depend on their bits and are traversed below.
+            if node.uint_type == UIntType.CONST:
+                for bit in node.bits:
+                    if not isinstance(bit.bit_type, BitType) or bit.bit_type != BitType.CONST:
+                        raise TypeError("A constant UInt must contain constant Bit nodes")
+                    visit(bit)
+            elif node.uint_type != UIntType.BITS:
+                for index, bit in enumerate(node.bits):
+                    if not isinstance(bit.bit_type, BitType) or bit.bit_type != BitType.UINT:
+                        raise TypeError("Owned UInt bits must have BitType.UINT")
+                    if bit.parent_uint is not node:
+                        raise ValueError("Owned UInt bits must reference their parent")
+                    if type(bit.index) is not int or bit.index != index:
+                        raise ValueError("Owned UInt bit indices must match their positions")
+                    if not isinstance(bit.operands, tuple) or bit.operands:
+                        raise ValueError("Owned UInt bits must have an empty operand tuple")
+
+        children = node.children
+        if not isinstance(children, tuple):
+            raise TypeError("Node children must be a tuple")
+
+        # Follow the same dependencies as parse_input, including the bits inside
+        # BITS wrappers and the parent of an indexed input bit.
         visiting.add(node_id)
-        for operand in node.operands:
-            visit(operand)
+        for child in children:
+            visit(child)
+        if isinstance(node, Bit) and node.bit_type == BitType.UINT:
+            parent = cast(UInt, node.parent_uint)
+            if parent.bits[cast(int, node.index)] is not node:
+                raise ValueError("Indexed bit must be stored at its position in the parent")
         visiting.remove(node_id)
         visited.add(node_id)
 
