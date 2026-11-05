@@ -54,6 +54,10 @@ class AncillaPool:
         self.used_qubits.append(q)
         return q
 
+    def allocs(self, count: int) -> list[Q]:
+        """allocate a many qubits"""
+        return [self.alloc() for i in range(count)]
+
     def free(self, q: Q):
         """return an ancilla qubit ot the pool"""
         if q not in self.used_qubits:
