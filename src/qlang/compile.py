@@ -71,7 +71,7 @@ def compile_oracle(expr: Bit) -> Oracle:
         if is_bit:
             # UINT bits are allocated by their parent UInt node below
             if kind != BitType.UINT:
-                bits = (node,)
+                bits = (cast(Bit, node),)
         elif is_uint:
             if kind == UIntType.VAR:
                 inputs[cast(str, node.name)] = []
@@ -122,6 +122,9 @@ def compile_oracle(expr: Bit) -> Oracle:
     # translate the operation 
     for node_id, node in nodes.items():
         kind = node_type(node)
+        # a UINT bit is one qubit of its parent, so it needs no gates of its own
+        if kind == BitType.UINT:
+            continue
         if node.is_leaf:
             # initialize |1> CONST bits
             if isinstance(node, Bit) and kind == BitType.CONST and node.value:
