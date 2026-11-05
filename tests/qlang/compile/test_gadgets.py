@@ -155,16 +155,16 @@ CASES_TEST_ADD = [{"a": 0, "b": 0, "c": 0}, {"a": 1, "b": 2, "c": 3}, {"a": 3, "
 def test_add(isolated_registry):
     ASTNode.reset()
     a, b, c = var_uint("a", 2), var_uint("b", 2), var_uint("c", 3)
-    assert_phase_oracle((a + b) != c, lambda v: v["a"] + v["b"] != v["c"], cases=CASES_TEST_ADD)
+    assert_phase_oracle((a + b) == c, lambda v: v["a"] + v["b"] == v["c"], cases=CASES_TEST_ADD)
 
 
-CASES_TEST_ADD_MISMATCHED_WIDTHS = [{"a": 0, "b": 0, "c": 0}, {"a": 7, "b": 1, "c": 8}, {"a": 7, "b": 0, "c": 7}, {"a": 5, "b": 1, "c": 6}, {"a": 7, "b": 1, "c": 7}, {"a": 4, "b": 1, "c": 0}, {"a": 3, "b": 1, "c": 5}, {"a": 6, "b": 1, "c": 7}]
+CASES_TEST_ADD_MISMATCHED_WIDTHS = [{"a": 0, "b": 0, "c": 0}, {"a": 7, "b": 1, "c": 8}, {"a": 7, "b": 0, "c": 7}, {"a": 5, "b": 1, "c": 6}, {"a": 3, "b": 1, "c": 5}]
 
 
 def test_add_mismatched_widths(isolated_registry):
     ASTNode.reset()
     a, b, c = var_uint("a", 3), var_uint("b", 1), var_uint("c", 4)
-    assert_phase_oracle((a + b) != c, lambda v: v["a"] + v["b"] != v["c"], cases=CASES_TEST_ADD_MISMATCHED_WIDTHS)
+    assert_phase_oracle((a + b) == c, lambda v: v["a"] + v["b"] == v["c"], cases=CASES_TEST_ADD_MISMATCHED_WIDTHS)
 
 
 CASES_TEST_ADD_CONST = [{"a": 0, "c": 3}, {"a": 1, "c": 4}, {"a": 2, "c": 5}, {"a": 3, "c": 6}, {"a": 3, "c": 5}, {"a": 0, "c": 0}, {"a": 1, "c": 3}]
@@ -173,7 +173,7 @@ CASES_TEST_ADD_CONST = [{"a": 0, "c": 3}, {"a": 1, "c": 4}, {"a": 2, "c": 5}, {"
 def test_add_const(isolated_registry):
     ASTNode.reset()
     a, c = var_uint("a", 2), var_uint("c", 3)
-    assert_phase_oracle((a + 3) != c, lambda v: v["a"] + 3 != v["c"], cases=CASES_TEST_ADD_CONST)
+    assert_phase_oracle((a + 3) == c, lambda v: v["a"] + 3 == v["c"], cases=CASES_TEST_ADD_CONST)
 
 
 CASES_TEST_SUB = [{"a": 3, "b": 1, "c": 2}, {"a": 0, "b": 1, "c": 3}, {"a": 2, "b": 2, "c": 0}, {"a": 1, "b": 0, "c": 1}, {"a": 0, "b": 0, "c": 1}, {"a": 2, "b": 3, "c": 2}, {"a": 3, "b": 3, "c": 3}]
@@ -182,16 +182,16 @@ CASES_TEST_SUB = [{"a": 3, "b": 1, "c": 2}, {"a": 0, "b": 1, "c": 3}, {"a": 2, "
 def test_sub(isolated_registry):
     ASTNode.reset()
     a, b, c = var_uint("a", 2), var_uint("b", 2), var_uint("c", 2)
-    assert_phase_oracle((a - b) != c, lambda v: (v["a"] - v["b"]) % 4 != v["c"], cases=CASES_TEST_SUB)
+    assert_phase_oracle((a - b) == c, lambda v: (v["a"] - v["b"]) % 4 == v["c"], cases=CASES_TEST_SUB)
 
 
-CASES_TEST_SUB_MISMATCHED_WIDTHS = [{"a": 5, "b": 1, "c": 4}, {"a": 0, "b": 1, "c": 7}, {"a": 7, "b": 0, "c": 7}, {"a": 4, "b": 1, "c": 3}, {"a": 4, "b": 1, "c": 4}, {"a": 0, "b": 1, "c": 0}, {"a": 6, "b": 0, "c": 5}]
+CASES_TEST_SUB_MISMATCHED_WIDTHS = [{"a": 0, "b": 1, "c": 7}, {"a": 7, "b": 0, "c": 7}, {"a": 4, "b": 1, "c": 3}, {"a": 0, "b": 1, "c": 0}, {"a": 7, "b": 1, "c": 6}]
 
 
 def test_sub_mismatched_widths(isolated_registry):
     ASTNode.reset()
     a, b, c = var_uint("a", 3), var_uint("b", 1), var_uint("c", 3)
-    assert_phase_oracle((a - b) != c, lambda v: (v["a"] - v["b"]) % 8 != v["c"], cases=CASES_TEST_SUB_MISMATCHED_WIDTHS)
+    assert_phase_oracle((a - b) == c, lambda v: (v["a"] - v["b"]) % 8 == v["c"], cases=CASES_TEST_SUB_MISMATCHED_WIDTHS)
 
 
 CASES_TEST_LSHIFT_CONST = [{"a": 0, "c": 0}, {"a": 3, "c": 6}, {"a": 5, "c": 2}, {"a": 7, "c": 6}, {"a": 4, "c": 0}, {"a": 7, "c": 7}, {"a": 1, "c": 1}]
@@ -200,7 +200,7 @@ CASES_TEST_LSHIFT_CONST = [{"a": 0, "c": 0}, {"a": 3, "c": 6}, {"a": 5, "c": 2},
 def test_lshift_const(isolated_registry):
     ASTNode.reset()
     a, c = var_uint("a", 3), var_uint("c", 3)
-    assert_phase_oracle((a << 1) != c, lambda v: (v["a"] << 1) % 8 != v["c"], cases=CASES_TEST_LSHIFT_CONST)
+    assert_phase_oracle((a << 1) == c, lambda v: (v["a"] << 1) % 8 == v["c"], cases=CASES_TEST_LSHIFT_CONST)
 
 
 CASES_TEST_LSHIFT_VARIABLE = [{"a": 1, "b": 2, "c": 4}, {"a": 5, "b": 1, "c": 2}, {"a": 7, "b": 3, "c": 0}, {"a": 3, "b": 0, "c": 3}, {"a": 3, "b": 0, "c": 0}, {"a": 6, "b": 1, "c": 6}]
@@ -210,7 +210,7 @@ CASES_TEST_LSHIFT_VARIABLE = [{"a": 1, "b": 2, "c": 4}, {"a": 5, "b": 1, "c": 2}
 def test_lshift_variable(isolated_registry):
     ASTNode.reset()
     a, b, c = var_uint("a", 3), var_uint("b", 2), var_uint("c", 3)
-    assert_phase_oracle((a << b) != c, lambda v: (v["a"] << v["b"]) % 8 != v["c"], cases=CASES_TEST_LSHIFT_VARIABLE)
+    assert_phase_oracle((a << b) == c, lambda v: (v["a"] << v["b"]) % 8 == v["c"], cases=CASES_TEST_LSHIFT_VARIABLE)
 
 
 CASES_TEST_RSHIFT_CONST = [{"a": 0, "c": 0}, {"a": 7, "c": 3}, {"a": 5, "c": 2}, {"a": 1, "c": 0}, {"a": 3, "c": 1}, {"a": 6, "c": 2}, {"a": 4, "c": 4}]
@@ -219,7 +219,7 @@ CASES_TEST_RSHIFT_CONST = [{"a": 0, "c": 0}, {"a": 7, "c": 3}, {"a": 5, "c": 2},
 def test_rshift_const(isolated_registry):
     ASTNode.reset()
     a, c = var_uint("a", 3), var_uint("c", 3)
-    assert_phase_oracle((a >> 1) != c, lambda v: (v["a"] >> 1) != v["c"], cases=CASES_TEST_RSHIFT_CONST)
+    assert_phase_oracle((a >> 1) == c, lambda v: (v["a"] >> 1) == v["c"], cases=CASES_TEST_RSHIFT_CONST)
 
 
 CASES_TEST_RSHIFT_VARIABLE = [{"a": 6, "b": 1, "c": 3}, {"a": 7, "b": 3, "c": 0}, {"a": 5, "b": 0, "c": 5}, {"a": 4, "b": 2, "c": 1}, {"a": 4, "b": 2, "c": 2}, {"a": 7, "b": 1, "c": 7}]
@@ -229,7 +229,7 @@ CASES_TEST_RSHIFT_VARIABLE = [{"a": 6, "b": 1, "c": 3}, {"a": 7, "b": 3, "c": 0}
 def test_rshift_variable(isolated_registry):
     ASTNode.reset()
     a, b, c = var_uint("a", 3), var_uint("b", 2), var_uint("c", 3)
-    assert_phase_oracle((a >> b) != c, lambda v: (v["a"] >> v["b"]) != v["c"], cases=CASES_TEST_RSHIFT_VARIABLE)
+    assert_phase_oracle((a >> b) == c, lambda v: (v["a"] >> v["b"]) == v["c"], cases=CASES_TEST_RSHIFT_VARIABLE)
 
 
 CASES_TEST_EQ = [{"a": 0, "b": 0}, {"a": 5, "b": 5}, {"a": 7, "b": 7}, {"a": 0, "b": 1}, {"a": 5, "b": 4}, {"a": 7, "b": 0}, {"a": 3, "b": 4}, {"a": 2, "b": 6}]
