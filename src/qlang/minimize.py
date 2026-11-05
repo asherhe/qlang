@@ -215,6 +215,9 @@ def qaoa(
     penalty: float = 1.0, 
     iterations: int = 32, 
 ) -> dict[str, int] | None: 
+    if iterations <= 0: 
+        raise ValueError("iterations must be a positive integer")
+
     widths = {}
     for var in vars: 
         if isinstance(var, UInt): 
