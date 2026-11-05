@@ -1,5 +1,6 @@
 import qlang
 from qlang.expression import ASTNode, Bit, UInt, BitType, UIntType, print_ast
+from qlang.optimize import optimize_expr
 
 def main():
     a = qlang.uint("a", 2)
@@ -12,6 +13,8 @@ def main():
     c = a + b
     print_ast(c)
     print()
+
+    print_ast(optimize_expr(c * 5))
 
     d = c == 3
     print_ast(d)
