@@ -1,10 +1,13 @@
 from .expression import ASTNode, Bit, UInt
 
 from collections.abc import Iterable
+from typing import cast
 
 from .compile import Oracle, compile_oracle, OutputMode
 
 from .evaluate import evaluate
+
+from .optimize import optimize_expr
 
 from qiskit_aer import AerSimulator
 from qiskit import QuantumCircuit, ClassicalRegister, transpile
@@ -24,6 +27,10 @@ def _phase_oracle(
         put a minus sign on each answer
         out is the output qubit as a helper to flip the correct inputs
     """
+    # compile_oracle marks solutions in phase itself and has no output qubit
+    if not oracle.output:
+        return oracle.circuit
+
     if len(oracle.output) != 1:
         raise ValueError("search needs a single yes/no output")
     
@@ -128,9 +135,10 @@ def search(
         for name, values in params.items()
     }
 
-    oracle = compile_oracle(pred)
+    # compile_oracle only accepts decomposed logic; evaluate below keeps using pred
+    oracle = compile_oracle(cast(Bit, optimize_expr(pred)))
 
-    k = k = _optimal_k(sum(len(q) for q in oracle.inputs.values()))
+    k = _optimal_k(sum(len(q) for q in oracle.inputs.values()))
 
     # inputs: the sum of the variables' binary width
     circuit, inputs = _grover_circuit(oracle, k=k)
@@ -147,8 +155,6 @@ def search(
     execuble = transpile(circuit, simulator)
     result = simulator.run(execuble, shots=1024).result()
     counts = result.get_counts()
-
-    assignments = []
 
     # most frequent outcomes first: after amplification, solutions dominate
     for bitstring, _ in sorted(counts.items(), key=lambda kv: kv[1], reverse=True):
