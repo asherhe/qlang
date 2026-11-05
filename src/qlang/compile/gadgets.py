@@ -8,7 +8,7 @@ from ..expression import ASTNode, BitType, UIntType
 from ..optimize import NodeType
 from .qubit import QCtx, Q
 
-Gadget = Callable[[QCtx, ASTNode, list[list[Q]]], list[Q]]
+Gadget = Callable[[QCtx, ASTNode, *tuple[list[Q], ...]], list[Q]]
 GADGETS: dict[tuple[type[NodeType], IntEnum], Gadget] = {}
 def gadget(*kinds: NodeType):
     def deco(fn):
@@ -18,8 +18,8 @@ def gadget(*kinds: NodeType):
     return deco
 
 @gadget(BitType.AND)
-def q_AND(qctx: QCtx, node: ASTNode, operands: list[list[Q]]) -> list[Q]:
-    qubitA, qubitB = (o[0] for o in operands)
+def q_AND(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
+    qubitA, qubitB = a[0], b[0]
     target_qubit = qctx.pool.alloc()
     if qubitA == qubitB:
         qctx.cx(qubitA, target_qubit)
@@ -29,8 +29,8 @@ def q_AND(qctx: QCtx, node: ASTNode, operands: list[list[Q]]) -> list[Q]:
 
 
 @gadget(BitType.OR)
-def q_OR(qctx: QCtx, node: ASTNode, operands: list[list[Q]]) -> list[Q]:
-    qubitA, qubitB = (o[0] for o in operands)
+def q_OR(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
+    qubitA, qubitB = a[0], b[0]
     target_qubit = qctx.pool.alloc()
     if qubitA == qubitB:
         qctx.cx(qubitA, target_qubit)
@@ -41,16 +41,16 @@ def q_OR(qctx: QCtx, node: ASTNode, operands: list[list[Q]]) -> list[Q]:
     return [target_qubit]
 
 @gadget(BitType.XOR)
-def q_XOR(qctx: QCtx, node: ASTNode, operands: list[list[Q]]) -> list[Q]:
-    qubitA, qubitB = (o[0] for o in operands)
+def q_XOR(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
+    qubitA, qubitB = a[0], b[0]
     target_qubit = qctx.pool.alloc()
     qctx.cx(qubitA, target_qubit)
     qctx.cx(qubitB, target_qubit)
     return [target_qubit]
 
 @gadget(BitType.NOT)
-def q_NOT(qctx: QCtx, node: ASTNode, operands: list[list[Q]]) -> list[Q]:
-    qubitA, qubitB = (o[0] for o in operands)
+def q_NOT(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
+    qubitA, qubitB = a[0], b[0]
     target_qubit = qctx.pool.alloc()
     qctx.x(target_qubit)
     qctx.cx(qubitA, target_qubit)
@@ -157,9 +157,25 @@ def q_adder(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q], carry_in: Q | Non
     return out
 
 @gadget(UIntType.ADD)
-def q_ADD(qctx: QCtx, node: ASTNode, operands: list[list[Q]]) -> list[Q]:
+def q_ADD(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
     carry_qubit = qctx.pool.alloc()
-    sum_qubits = q_adder(qctx, node, operands[0], operands[1], carry_out=carry_qubit)
+    sum_qubits = q_adder(qctx, node, a, b, carry_out=carry_qubit)
     sum_qubits.append(carry_qubit)
     return sum_qubits
+
+@gadget(UIntType.SUB)
+def q_SUB(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
+    # TODO: this is mega unoptimized
+    width = max(len(a), len(b))
+    neg_b = qctx.pool.allocs(width)
+    # pad neg_b with ones if necessary
+    for i in range(width):
+        qctx.cx(neg_b[i])
+        if i < len(b):
+            qctx.cnot(b[i], neg_b[i])
+
+    carry_1 = qctx.pool.alloc()
+    qctx.x(carry_1)
+    diff_qubits = q_adder(qctx, node, a, neg_b, carry_in=carry_1)
+    return diff_qubits
 
