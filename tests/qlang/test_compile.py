@@ -173,7 +173,8 @@ class TestCompile(unittest.TestCase):
             for expr in (a == b, a & (a == b), var_uint("x", 2)):
                 with self.subTest(node=type(expr).__name__):
                     with self.assertRaises((TypeError, ValueError)):
-                        compile_oracle(expr)
+                        # A UInt root intentionally violates the Bit-only API.
+                        compile_oracle(expr)  # pyright: ignore[reportArgumentType]
             circuit.assert_not_called()
 
     def test_invalid_nodes_and_operand_counts_are_rejected(self):
