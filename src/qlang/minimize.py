@@ -188,6 +188,21 @@ def linear_objective_terms(constant: float, weights: dict[int, float]) -> dict[i
         terms[1 << q] = -w / 2
     return terms
 
+# converts linear terms to Pauli operators to feed into QAOAAnsatz
+def terms_to_op(terms: dict[int, float], num_qubits: int) -> list[tuple[str, int]]: 
+    pauli_terms = []
+    for mask, coeff in terms.items(): 
+        if coeff == 0: 
+            continue
+        label = "".join(
+            "Z" if mask & (1 << qubit) else "I"
+            for qubit in reversed(range(num_qubits))
+        )
+        pauli_terms.append((label, coeff))
+    if not pauli_terms: 
+        pauli_terms.append(("I" * num_qubits, 0.0))
+    return pauli_terms
+
 def qaoa(
     vars: list[Bit | UInt], 
     constraint: Bit, 
