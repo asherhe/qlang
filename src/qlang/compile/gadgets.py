@@ -98,7 +98,7 @@ def q_adder(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q], carry_in: Q | Non
 
     accepts two UInt operands, a and b. the shorter operand is treated as if it were padded with 0s
 
-    the output is of width max(a.width, b.width) + 1, representing the sum and teh carry bit
+    the output is of width max(a.width, b.width). the final carry is copied into carry_out if given
     """
     # uses cuccaro adder, 1 ancila cubit required
     # TODO: draper adder if in-place allowed
@@ -115,36 +115,26 @@ def q_adder(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q], carry_in: Q | Non
     if carry_in is not None:
         qctx.cx(carry_in, carry_ancilla)
 
-    # create and initialize output ancillas
-    out = qctx.pool.allocs(len(b))
+    # output ancillas hold b, zero-padded up to the width of a: the ancillas above len(b) start at 0
+    out = qctx.pool.allocs(len(a))
     for i in range(len(b)):
         qctx.cx(b[i], out[i])
 
-    # forward sweep
-    for i in range(len(b)):
+    # forward sweep (MAJ): out[i] = b[i]^c[i], a[i] = a[i]^c[i], and the carry becomes c[i+1]
+    for i in range(len(a)):
         qctx.cx(carry_ancilla, out[i])
         qctx.cx(carry_ancilla, a[i])
         qctx.ccx(a[i], out[i], carry_ancilla)
-
-    # forward sweep where b is 0
-    # simplifies to a toffoli gate
-    for i in range(len(b), len(a)):
-        qctx.cx(carry_ancilla, a[i])
 
     # copy carry_out state
     if carry_out is not None:
         qctx.cx(carry_ancilla, carry_out)
 
-    # forward sweep
-    for i in range(len(a)-1, len(b)-1, -1):
-        qctx.cx(carry_ancilla, a[i])
-
-    # forward sweep where b is 0
-    # simplifies to a toffoli gate
-    for i in range(len(b)-1, -1, -1):
+    # backward sweep (UMA): restore the carry to c[i] and a[i], and turn out[i] into the sum bit
+    for i in range(len(a)-1, -1, -1):
         qctx.ccx(a[i], out[i], carry_ancilla)
         qctx.cx(carry_ancilla, a[i])
-        qctx.cx(carry_ancilla, out[i])
+        qctx.cx(a[i], out[i])
 
     return out
 
