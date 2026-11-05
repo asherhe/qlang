@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from typing import Iterable
 
 from qiskit.circuit import QuantumCircuit, Qubit
 
@@ -52,17 +53,22 @@ class AncillaPool:
         self.ancillas = []
         self.free_qubits = []
         self.used_qubits = []
+        self._allocation_serial = 0
+        self._allocation_ids: dict[int, int] = {}
 
     def alloc(self) -> Q:
         """give an ancilla qubit that is set to |0>"""
         if self.free_qubits:
-            q = self.free_qubits.pop()
+            stored = self.free_qubits.pop()
+            q = Q(stored.qubit)
         else:
             raw_q = Qubit()
             self.circuit.add_bits([raw_q])
-            q = Q(qubit=raw_q, one_use=True)
+            q = Q(qubit=raw_q)
             self.ancillas.append(q)
         self.used_qubits.append(q)
+        self._allocation_serial += 1 
+        self._allocation_ids[id(q)] = self._allocation_serial
         return q
 
     def allocs(self, count: int) -> list[Q]:
@@ -70,65 +76,96 @@ class AncillaPool:
         return [self.alloc() for i in range(count)]
 
     def free(self, q: Q):
-        """return an ancilla qubit ot the pool"""
-        if q not in self.used_qubits:
-            raise ValueError("trying to free an untracked or already freed qubit")
-        self.used_qubits.remove(q)
-        self.free_qubits.append(q)
+        """reclaim a clean, currently allocated ancilla qubit to the pool"""
+        for i, used in enumerate(self.used_qubits):
+            if used == q:
+                self.used_qubits.pop(i)
+                # reset all other metadata on the qubit
+                self.free_qubits.append(Q(q.qubit))
+                return
+        raise ValueError("trying to free an untracked or already freed qubit")
 
     def mark(self) -> int:
         """returns the current allocation marker index"""
-        return len(self.used_qubits)
+        return self._allocation_serial
 
-    def release_since(self, mark: int):
+    def release_since(self, mark: int, keep: Iterable[Q] = ()):
         """releases all ancillas allocated since the given mark back to the free list"""
-        while len(self.used_qubits) > mark:
-            q = self.used_qubits.pop()
-            if q not in self.free_qubits:
-                self.free_qubits.append(q)
+        keep_set = {q.qubit for q in keep}
+        for q in list(self.used_qubits):
+            if self._allocation_ids[id(q)] > mark and q.qubit not in keep_set:
+                self.free(q)
+
+    def _uncompute_since(self, circuit_mark: int, protected: set[Qubit]) -> None:
+        """append inverses of new gates since a given point in the circuit"""
+        instructions = list(self.circuit.data[circuit_mark:])
+        for inst in reversed(instructions):
+            self.circuit.append(inst.operation.inverse(), inst.qubits, inst.clbits)
+    
+    @staticmethod
+    def _validate_outputs_are_not_controls(
+        instructions, output_set: set[Qubit]
+    ) -> None:
+        """outputs may be targets of copied results, but never controls"""
+        for inst in instructions:
+            touched = set(inst.qubits) & output_set
+            if not touched:
+                continue
+            ncontrols = getattr(inst.operation, "num_ctrl_qubits", 0)
+            controls = set(inst.qubits[:ncontrols])
+            if controls & output_set:
+                raise ValueError(
+                    "scratch outputs cannot control operations inside the scratch block"
+                )
+            # controlled gates: the final wire is the target
+            # uncontrolled gates: only a one-qubit operation is unambiguous
+            if ncontrols:
+                if touched != {inst.qubits[-1]}:
+                    raise ValueError(
+                        "scratch outputs may only be targets inside the scratch block"
+                    )
+            elif len(inst.qubits) != 1:
+                raise ValueError(
+                    "scratch outputs cannot participate in multi-qubit uncontrolled gates"
+                )
 
     @contextmanager
-    def scratch(self, scratch_count: int = 1, output_count: int = 1):
+    def scratch(self, scratch_count: int = 1, output_count: int = 1, preserve: Iterable[Q] = ()):
         """
         context manager for temporary workspace with automatic gate uncomputation and recycling
 
-        all work in the scratch context is uncomputed on exit, including changes to input qubits.
-        only output ancillas are preserved and handed to the caller
+        all work in the scratch context is uncomputed on exit, including changes to non-ancilla
+        qubits in the workspace. only output ancillas are preserved and handed to the caller.
+
+        do NOT use output qubits as controls here, this will break the uncompute operations
+
+        preserve is for input qubits deliberately converted into intermediate result bits
         """
         circuit_mark = len(self.circuit.data)
         pool_mark = self.mark()
-
-        scratch_qs = [self.alloc() for i in range(scratch_count)]
-        output_qs = [self.alloc() for i in range(output_count)]
-        
-        yield_target = (tuple(scratch_qs), tuple(output_qs))
-
-        compute_end_idx = None
-
-        def harvest():
-            """
-            call this inside the block when the compute phase is complete
-
-            after this, you should only copy results to output ancillas
-            """
-            nonlocal compute_end_idx
-            compute_end_idx = len(self.circuit.data)
+        scratch_qs = self.allocs(scratch_count)
+        output_qs = self.allocs(output_count)
+        preserve_qs = tuple(preserve)
+        output_set = {q.qubit for q in output_qs}
+        preserve_set = {q.qubit for q in preserve_qs}
 
         try:
-            yield yield_target
-        finally:
-            # fallback to current poitn if harvest() not called
-            end_idx = compute_end_idx if compute_end_idx is not None else len(self.circuit.data)
+            yield scratch_qs, output_qs
+        except BaseException:
+            # roll back computations
+            self._uncompute_since(circuit_mark, set())
+            self.release_since(pool_mark)
+            raise
+        else:
             # get new computations in context block
-            scratch_circuit = self.circuit.data[circuit_mark : end_idx]
-            output_set = {q.qubit for q in output_qs}
-            for inst in reversed(scratch_circuit):
-                # this computation has nothing to do with output bits
-                # TODO: we are blindly trusting that the user is not doing anything sneaky wtih the
-                # output bits, like mutating the workplace state with it. add guards in the future?
-                if len(set(inst.qubits) & output_set) == 0:
-                    self.circuit.append(inst.operation.inverse(), inst.qubits, inst.clbits)
+            instructions = list(self.circuit.data[circuit_mark:])
+            
+            try:
+                self._validate_outputs_are_not_controls(instructions, output_set)
+            except BaseException:
+                self._uncompute_since(circuit_mark, set())
+                self.release_since(pool_mark)
+                raise
 
-            for q in scratch_qs:
-                self.free(q)
-
+            self._uncompute_since(circuit_mark, output_set | preserve_set)
+            self.release_since(pool_mark, (*output_qs, *preserve_qs))
