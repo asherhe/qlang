@@ -142,6 +142,23 @@ def evaluate_linear(expr: Bit) -> tuple[int | bool, dict[str, int]]:
         return const, coeffs
     return NotImplemented
 
+# expands a list of coefficient assignments to a bit representation of each variable
+# e.g. 3x of width 2 becomes 3x[0] + 6x[1]
+def expand_to_bits(
+    coefficients: dict[str, int], 
+    widths: dict[str, int],
+) -> dict[int, float]: 
+    weights = {}
+    offset = 0
+    for name, width in widths.items(): 
+        coeff = coefficients.get(name, 0)
+        for idx in range(width): 
+            qubit = offset + idx
+            if coeff != 0: 
+                weights[qubit] = coeff * (1 << idx)
+        offset += widths[name]
+    return weights
+
 def qaoa(
     vars: list[Bit | UInt], 
     constraint: Bit, 
