@@ -26,5 +26,10 @@ class AncillaPool:
 
     ancilla qubits are recycled across the circuit to minimize the number of qubits required
     """
-    ...
+
+    def alloc(self) -> Q:
+        ...
+
+    def free(self, q: Q):
+        ...
 

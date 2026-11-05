@@ -18,78 +18,90 @@ def gadget(*kinds: NodeType):
     return deco
 
 @gadget(BitType.AND)
-def q_AND(compute: QuantumCircuit,qubitA: int, qubitB: int, target_qubit: int) -> None:
+def q_AND(qctx: QCtx, node: ASTNode, operands: list[list[Q]]) -> list[Q]:
+    qubitA, qubitB = (o[0] for o in operands)
+    target_qubit = qctx.pool.alloc()
     if qubitA == qubitB:
-        compute.cx(qubitA, target_qubit)
+        qctx.cx(qubitA, target_qubit)
     else:
-        compute.ccx(qubitA, qubitB, target_qubit)
+        qctx.ccx(qubitA, qubitB, target_qubit)
+    return [target_qubit]
 
 
 @gadget(BitType.OR)
-def q_OR(compute: QuantumCircuit, qubitA: int, qubitB: int, target_qubit: int) -> None:
+def q_OR(qctx: QCtx, node: ASTNode, operands: list[list[Q]]) -> list[Q]:
+    qubitA, qubitB = (o[0] for o in operands)
+    target_qubit = qctx.pool.alloc()
     if qubitA == qubitB:
-        compute.cx(qubitA, target_qubit)
+        qctx.cx(qubitA, target_qubit)
     else:
-        compute.cx(qubitA, target_qubit)
-        compute.cx(qubitB, target_qubit)
-        compute.ccx(qubitA, qubitB, target_qubit)
+        qctx.cx(qubitA, target_qubit)
+        qctx.cx(qubitB, target_qubit)
+        qctx.ccx(qubitA, qubitB, target_qubit)
+    return [target_qubit]
 
 @gadget(BitType.XOR)
-def q_XOR(compute: QuantumCircuit, qubitA: int, qubitB: int, target_qubit: int) -> None:
-    compute.cx(qubitA, target_qubit)
-    compute.cx(qubitB, target_qubit)
+def q_XOR(qctx: QCtx, node: ASTNode, operands: list[list[Q]]) -> list[Q]:
+    qubitA, qubitB = (o[0] for o in operands)
+    target_qubit = qctx.pool.alloc()
+    qctx.cx(qubitA, target_qubit)
+    qctx.cx(qubitB, target_qubit)
+    return [target_qubit]
 
 @gadget(BitType.NOT)
-def q_NOT(compute: QuantumCircuit, qubitA: int, target_qubit: int) -> None:
-    compute.x(target_qubit)
-    compute.cx(qubitA, target_qubit)
+def q_NOT(qctx: QCtx, node: ASTNode, operands: list[list[Q]]) -> list[Q]:
+    qubitA, qubitB = (o[0] for o in operands)
+    target_qubit = qctx.pool.alloc()
+    qctx.x(target_qubit)
+    qctx.cx(qubitA, target_qubit)
+    return [target_qubit]
 
 @gadget(BitType.NE)
-def q_NE(compute: QuantumCircuit, left, right, target, fresh_scratch):
+def q_NE(qctx: QCtx, node: ASTNode, operands: list[list[Q]]) -> list[Q]:
     if len(left) == 1:
-        quantumXOR(compute, left[0], right[0], target)
+        quantumXOR(qctx, left[0], right[0], target)
         return
 
     differences = []
     for a, b in zip(left, right, strict=True):
         difference = fresh_scratch()
-        quantumXOR(compute, a, b, difference)
+        quantumXOR(qctx, a, b, difference)
         differences.append(difference)
 
     any_different = differences[0]
     for i, difference in enumerate(differences[1:], start=1):
         result = target if i == len(differences) - 1 else fresh_scratch()
-        quantumOR(compute, any_different, difference, result)
+        quantumOR(qctx, any_different, difference, result)
         any_different = result
 
 @gadget(BitType.LT)
-def q_LT(compute: QuantumCircuit, left, right, target, fresh_scratch):
+def q_LT(qctx: QCtx, node: ASTNode, operands: list[list[Q]]) -> list[Q]:
     # BUG: cooked when size of left and right mismatch
     lower_less = None
 
     for i, (a, b) in enumerate(zip(left, right, strict=True)):
         result = target if i == len(left) - 1 else fresh_scratch()
         not_a = fresh_scratch()
-        quantumNOT(compute, a, not_a)
+        quantumNOT(qctx, a, not_a)
 
         if lower_less is None:
-            quantumAND(compute, not_a, b, result)
+            quantumAND(qctx, not_a, b, result)
         else:
             less_here = fresh_scratch()
             different = fresh_scratch()
             equal_here = fresh_scratch()
             carry_less = fresh_scratch()
 
-            quantumAND(compute, not_a, b, less_here)
-            quantumXOR(compute, a, b, different)
-            quantumNOT(compute, different, equal_here)
-            quantumAND(compute, equal_here, lower_less, carry_less)
-            quantumOR(compute, less_here, carry_less, result)
+            quantumAND(qctx, not_a, b, less_here)
+            quantumXOR(qctx, a, b, different)
+            quantumNOT(qctx, different, equal_here)
+            quantumAND(qctx, equal_here, lower_less, carry_less)
+            quantumOR(qctx, less_here, carry_less, result)
 
         lower_less = result
 
 @gadget(UIntType.ADD)
-def q_ADD(compute: QuantumCircuit, a: list[int], b: list[int], out: list[int], fresh_scratch, carry_in=None, carry_out=None):
+def q_ADD(qctx: QCtx, node: ASTNode, operands: list[list[Q]]) -> list[Q]:
     """
     construct a quantum uint addition circuit
 
@@ -115,35 +127,35 @@ def q_ADD(compute: QuantumCircuit, a: list[int], b: list[int], out: list[int], f
     carry_ancilla = fresh_scratch()
     # copy carry_in state
     if carry_in is not None:
-        compute.cx(carry_in, carry_ancilla)
+        qctx.cx(carry_in, carry_ancilla)
 
     # copy b onto out
     for i in range(len(b)):
-        compute.cx(b[i], out[i])
+        qctx.cx(b[i], out[i])
 
     # forward sweep
     for i in range(len(b)):
-        compute.cx(carry_ancilla, out[i])
-        compute.cx(carry_ancilla, a[i])
-        compute.ccx(a[i], out[i], carry_ancilla)
+        qctx.cx(carry_ancilla, out[i])
+        qctx.cx(carry_ancilla, a[i])
+        qctx.ccx(a[i], out[i], carry_ancilla)
         
     # forward sweep where b is 0
     # simplifies to a toffoli gate
     for i in range(len(b), len(a)):
-        compute.cx(carry_ancilla, a[i])
+        qctx.cx(carry_ancilla, a[i])
 
     # copy carry_out state
     if carry_out is not None:
-        compute.cx(carry_ancilla, carry_out)
+        qctx.cx(carry_ancilla, carry_out)
 
     # forward sweep
     for i in range(len(a)-1, len(b)-1, -1):
-        compute.cx(carry_ancilla, a[i])
+        qctx.cx(carry_ancilla, a[i])
         
     # forward sweep where b is 0
     # simplifies to a toffoli gate
     for i in range(len(b)-1, -1, -1):
-        compute.ccx(a[i], out[i], carry_ancilla)
-        compute.cx(carry_ancilla, a[i])
-        compute.cx(carry_ancilla, out[i])
+        qctx.ccx(a[i], out[i], carry_ancilla)
+        qctx.cx(carry_ancilla, a[i])
+        qctx.cx(carry_ancilla, out[i])
 
