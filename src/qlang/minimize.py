@@ -1,9 +1,10 @@
-from .expression import Bit, UInt
+from .expression import ASTNode, Bit, UInt, BitType, UIntType, node_type
 from .evaluate import evaluate
 
 from math import pi
 from itertools import product
 from collections.abc import Callable
+from typing import cast
 
 from qiskit.quantum_info import SparsePauliOp, Statevector
 from qiskit.circuit.library import QAOAAnsatz
@@ -82,6 +83,46 @@ def qaoa_creator(cost_operator: SparsePauliOp):
 
     return state_at, mean_cost
 
+def extract_linear(expr: ASTNode) -> tuple[int | bool, dict[str, int]]: 
+    type = node_type(expr)
+    if isinstance(expr, Bit): 
+        if type == BitType.CONST: 
+            return cast(bool, expr.value), {}
+        if type == BitType.VAR: 
+            return 0, {cast(str, expr.name): 1}
+        return NotImplemented
+    if isinstance(expr, UInt): 
+        if type == UIntType.CONST: 
+            return expr.const_value, {}
+        if type == UIntType.VAR: 
+            return 0, {cast(str, expr.name): 1}
+        if type == UIntType.ADD: 
+            left, right = expr.operands
+            left_const, left_coeffs = extract_linear(left)
+            right_const, right_coeffs = extract_linear(right)
+            const = left_const + right_const
+            coeffs = {}
+            for key, value in left_coeffs.items(): 
+                if key not in right_coeffs: 
+                    coeffs[key] = value
+                else: 
+                    coeffs[key] = value + right_coeffs[key]
+            return const, coeffs
+        if type == UIntType.MUL: 
+            left, right = expr.operands
+            left_const, left_coeffs = extract_linear(left)
+            right_const, right_coeffs = extract_linear(right)
+            if left_coeffs and right_coeffs: 
+                return NotImplemented
+            const = left_const * right_const
+            coeffs = {}
+            if not left_coeffs: 
+                coeffs = {key: value * left_const for key, value in right_coeffs.items()}
+            else: 
+                coeffs = {key: value * right_const for key, value in left_coeffs.items()}
+            return const, coeffs
+    return NotImplemented
+
 def qaoa(
     vars: list[Bit | UInt], 
     constraint: Bit, 
@@ -96,6 +137,9 @@ def qaoa(
         else: 
             widths[var.name] = 1
     grid = [i * 2*pi / iterations for i in range(iterations)]
+
+    # if evaluate_linear(constraint) is not NotImplemented: 
+    #     ...
 
     operator = constraint_to_cost_op(constraint, widths, objective, penalty)
     state_at, mean_cost = qaoa_creator(operator)
