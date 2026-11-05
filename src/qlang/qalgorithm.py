@@ -1,6 +1,6 @@
 from .expression import ASTNode, Bit, UInt
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from typing import cast
 
 from .compile import Oracle, compile_oracle, OutputMode
@@ -190,7 +190,7 @@ def _try_k(
     return None
 
 def search(
-    params: dict[str, Iterable[int]],
+    params: Mapping[str, Iterable[int]],
     pred: Bit # expression tree for the condition
 ) -> dict[str, int] | None:
     """
