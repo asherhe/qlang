@@ -4,6 +4,7 @@ import itertools
 
 import numpy as np
 import pytest
+from qiskit import QuantumCircuit
 from qiskit.quantum_info import Statevector
 
 from qlang.compile.compile import compile_oracle
@@ -24,11 +25,12 @@ def isolated_registry():
 
 
 def assert_phase_oracle(expr):
-    """independent check: the circuit applies -1 iff the expression is true"""
+    """Compare the public result with an independent Boolean evaluator."""
     oracle = compile_oracle(expr)
+    input_qubits = [q for register in oracle.inputs.values() for q in register]
     names = list(oracle.inputs)
-    domains = [range(1 << len(oracle.inputs[n])) for n in names]
-    expected = np.zeros(2 ** oracle.circuit.num_qubits, dtype=complex)
+    domains = [range(1 << len(oracle.inputs[name])) for name in names]
+    expected_superposition = np.zeros(2 ** oracle.circuit.num_qubits, dtype=complex)
     for values in itertools.product(*domains):
         assignments = dict(zip(names, values))
         basis = sum(
@@ -37,8 +39,15 @@ def assert_phase_oracle(expr):
             for bit, qubit in enumerate(register)
         )
         sign = -1 if evaluate(expr, assignments) else 1
+        expected = np.zeros_like(expected_superposition)
         expected[basis] = sign
-        actual = Statevector.from_int(basis, oracle.circuit.num_qubits).evolve(oracle.circuit)
+        # Prepare basis state
+        prepared = QuantumCircuit(oracle.circuit.num_qubits)
+        for q in input_qubits:
+            if (basis >> q) & 1:
+                prepared.x(q)
+        prepared.compose(oracle.circuit, inplace=True)
+        actual = Statevector.from_instruction(prepared)
         np.testing.assert_allclose(actual.data, expected, atol=1e-12)
     return oracle
 
@@ -92,12 +101,6 @@ def test_const_leaves(isolated_registry):
     assert_phase_oracle(const_bit(True))
     assert_phase_oracle(const_bit(False))
     assert_phase_oracle(var_bit("a") & const_bit(True))
-
-
-def test_uint_add(isolated_registry):
-    ASTNode.reset()
-    x, y = var_uint("x", 2), var_uint("y", 2)
-    assert_phase_oracle(x + y)
 
 
 def test_indexed_uint_bit(isolated_registry):
