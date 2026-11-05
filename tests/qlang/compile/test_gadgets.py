@@ -9,7 +9,7 @@ from qiskit.quantum_info import Statevector
 
 from qlang.compile.compile import compile_oracle
 from qlang.compile.gadgets import _GADGETS
-from qlang.expression import ASTNode, const_bit, var_bit, var_uint
+from qlang.expression import ASTNode, const_bit, var_bit, var_uint, Bit, BitType
 from qlang.evaluate import evaluate
 
 
@@ -31,6 +31,29 @@ def assert_phase_oracle(expr):
     names = list(oracle.inputs)
     domains = [range(1 << len(oracle.inputs[name])) for name in names]
     expected_superposition = np.zeros(2 ** oracle.circuit.num_qubits, dtype=complex)
+
+    def mock_evaluate(node, assignments):
+        """Evaluate a Bit node with side-effect-free recursion."""
+        if isinstance(node, Bit) and node.bit_type == BitType.VAR:
+            # variables the optimizer removed (e.g. a ^ a) are absent and can't affect the result
+            return bool(assignments.get(node.name, 0))
+        if isinstance(node, Bit) and node.bit_type == BitType.UINT:
+            return bool((assignments[node.parent_uint.name] >> node.index) & 1)
+        if isinstance(node, Bit) and node.bit_type == BitType.CONST:
+            return bool(node.value)
+        if isinstance(node, Bit) and node.bit_type == BitType.NOT:
+            return not mock_evaluate(node.operands[0], assignments)
+        if isinstance(node, Bit) and node.bit_type in (BitType.XOR, BitType.AND, BitType.OR):
+            left = mock_evaluate(node.operands[0], assignments)
+            right = mock_evaluate(node.operands[1], assignments)
+            if node.bit_type == BitType.XOR:
+                return left ^ right
+            elif node.bit_type == BitType.AND:
+                return left and right
+            elif node.bit_type == BitType.OR:
+                return left or right
+        return False
+
     for values in itertools.product(*domains):
         assignments = dict(zip(names, values))
         basis = sum(
@@ -38,9 +61,10 @@ def assert_phase_oracle(expr):
             for name, register in oracle.inputs.items()
             for bit, qubit in enumerate(register)
         )
-        sign = -1 if evaluate(expr, assignments) else 1
+        sign = -1 if mock_evaluate(expr, assignments) else 1
         expected = np.zeros_like(expected_superposition)
         expected[basis] = sign
+
         # Prepare basis state
         prepared = QuantumCircuit(oracle.circuit.num_qubits)
         for q in input_qubits:
