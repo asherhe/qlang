@@ -188,8 +188,8 @@ def linear_objective_terms(constant: float, weights: dict[int, float]) -> dict[i
         terms[1 << q] = -w / 2
     return terms
 
-# converts linear terms to Pauli operators to feed into QAOAAnsatz
-def terms_to_op(terms: dict[int, float], num_qubits: int) -> list[tuple[str, int]]: 
+# converts linear terms into SparsePauliOp to feed into QAOAAnsatz
+def terms_to_op(terms: dict[int, float], num_qubits: int) -> SparsePauliOp: 
     pauli_terms = []
     for mask, coeff in terms.items(): 
         if coeff == 0: 
@@ -201,7 +201,7 @@ def terms_to_op(terms: dict[int, float], num_qubits: int) -> list[tuple[str, int
         pauli_terms.append((label, coeff))
     if not pauli_terms: 
         pauli_terms.append(("I" * num_qubits, 0.0))
-    return pauli_terms
+    return SparsePauliOp.from_list(pauli_terms)
 
 def qaoa(
     vars: list[Bit | UInt], 
@@ -218,11 +218,27 @@ def qaoa(
             widths[var.name] = 1
     grid = [i * 2*pi / iterations for i in range(iterations)]
 
+    # NOTE: if constraint is linear, the program also expects a linear objective
     linear = evaluate_linear(constraint)
     if linear is not NotImplemented: 
-        ...
+        # manipulate constraint equation to one side
+        constant, coefficients = linear
+        weights = expand_to_bits(coefficients, widths)
+        terms = squared_residuals(float(constant), weights, penalty)
 
-    operator = constraint_to_cost_op(constraint, widths, objective, penalty)
+        # objective is an expression, not an equation, so extract() is used instead of evaluate()
+        objective_linear = extract_linear(objective)
+        if objective_linear is NotImplemented: 
+            raise ValueError("linear objective is expected for linear constraint")
+        objective_constant, objective_coeff = objective_linear
+        objective_weights = expand_to_bits(objective_coeff, widths)
+        objective_terms = linear_objective_terms(objective_constant, objective_weights)
+        for mask, coeff in objective_terms.items(): 
+            terms[mask] = terms.get(mask, 0) + coeff
+
+        operator = terms_to_op(terms, sum(widths.values()))
+    else: 
+        operator = constraint_to_cost_op(constraint, widths, objective, penalty)
     state_at, mean_cost = qaoa_creator(operator)
     best_angles = min(product(grid, repeat=2), key=mean_cost)
 
