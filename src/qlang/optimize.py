@@ -88,17 +88,16 @@ decompose = RulePass("decompose")
 def deco_NE(expr: Bit, a: UInt, b: UInt):
     return ~(a == b)
 
-# collapse all comparison operators to LT to keep compilation clean
+# collapse all comparison operators to GE to keep compilation clean
+@decompose.rule(BitType.LT)
+def deco_LT(expr: Bit, a: UInt, b: UInt):
+    return ~(a >= b)
 @decompose.rule(BitType.GT)
 def deco_GT(expr: Bit, a: UInt, b: UInt):
-    return b < a
+    return ~(b >= a)
 @decompose.rule(BitType.LE)
 def deco_LE(expr: Bit, a: UInt, b: UInt):
-    return ~(b < a)
-@decompose.rule(BitType.GE)
-def deco_GE(expr: Bit, a: UInt, b: UInt):
-    return ~(a < b)
-
+    return b >= a
 
 # shifting by a constant is only a rewiring of bits, so it needs no gates
 # a shift of a constant is left to the collapse pass, which folds it directly
@@ -235,6 +234,11 @@ def coll_LT_const_bounds(expr: Bit, a: UInt, b: UInt):
         if bval == 1:
             return ~(a != 0)
 
+@collapse.rule(BitType.LT)
+def coll_LT(expr: Bit, a: UInt, b: UInt):
+    # skip - assume all LT have been decomposed
+    pass
+
 @collapse.rule(BitType.GT)
 def coll_GT(expr: Bit, a: UInt, b: UInt):
     # skip - assume all GT have been decomposed
@@ -243,11 +247,6 @@ def coll_GT(expr: Bit, a: UInt, b: UInt):
 @collapse.rule(BitType.LE)
 def coll_LE(expr: Bit, a: UInt, b: UInt):
     # skip - assume all LE have been decomposed
-    pass
-
-@collapse.rule(BitType.GE)
-def coll_GE(expr: Bit, a: UInt, b: UInt):
-    # skip - assume all GE have been decomposed
     pass
 
 # ---- commutative (Bit, Bit) -> Bit operators ----
