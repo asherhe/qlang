@@ -3,11 +3,11 @@
 import qlang
 
 def main():
+    qlang.ASTNode.reset()
     x = qlang.uint("x", width=2)
     y = qlang.uint("y", width=2)
 
-    # note: overloading == is cooked because it interferes with other language equality stuff
-    # probably make a .eq() operator instead for the equality operator
+    # Equality builds a symbolic predicate that search compiles into an oracle.
     pred = x + y == 3
 
     params = {
