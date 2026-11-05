@@ -102,10 +102,21 @@ def q_EQ(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
 
     return [qout]
 
-@gadget(BitType.LT)
-def q_LT(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
-    diff_qubits = q_SUB(qctx, node, a, b)
-    return diff_qubits[-1:]
+@gadget(BitType.GE)
+def q_GE(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
+    width = max(len(a), len(b))
+    neg_b = qctx.pool.allocs(width)
+    # pad neg_b with ones if necessary
+    for i in range(width):
+        qctx.x(neg_b[i])
+        if i < len(b):
+            qctx.cx(b[i], neg_b[i])
+
+    carry_1 = qctx.pool.alloc()
+    qctx.x(carry_1)
+    qout = qctx.pool.alloc()
+    diff_qubits = q_adder(qctx, node, a, neg_b, carry_in=carry_1, carry_out=qout)
+    return [qout]
 
 def q_adder(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q], carry_in: Q | None = None, carry_out: Q | None = None) -> list[Q]:
     """

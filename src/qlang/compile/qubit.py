@@ -60,7 +60,7 @@ class AncillaPool:
         else:
             raw_q = Qubit()
             self.circuit.add_bits([raw_q])
-            q = Q(qubit=raw_q)
+            q = Q(qubit=raw_q, one_use=True)
             self.ancillas.append(q)
         self.used_qubits.append(q)
         return q
