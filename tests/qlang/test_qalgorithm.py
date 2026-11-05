@@ -9,9 +9,6 @@ from qlang.qalgorithm import search
 needs_mul = pytest.mark.xfail(
     strict=True, raises=TypeError, reason="compile_oracle has no MUL gadget yet"
 )
-needs_sub = pytest.mark.xfail(
-    strict=True, raises=TypeError, reason="compile_oracle has no SUB gadget yet"
-)
 
 
 def test_search_returns_satisfying_assignments(p):
@@ -29,7 +26,6 @@ def test_grover_algorithm_addition_condition(x, y):
     assert result is not None
     assert evaluate(pred, result)
 
-@needs_sub
 def test_grover_algorithm_subtraction_condition(x, y):
     pred = x - y == 5
 
