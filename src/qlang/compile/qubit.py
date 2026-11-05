@@ -130,7 +130,7 @@ class AncillaPool:
                 )
 
     @contextmanager
-    def scratch(self, scratch_count: int = 1, output_count: int = 1, preserve: Iterable[Q] = ()):
+    def scratch(self, scratch_count: int = 1, output_count: int = 1):
         """
         context manager for temporary workspace with automatic gate uncomputation and recycling
 
@@ -145,9 +145,7 @@ class AncillaPool:
         pool_mark = self.mark()
         scratch_qs = self.allocs(scratch_count)
         output_qs = self.allocs(output_count)
-        preserve_qs = tuple(preserve)
         output_set = {q.qubit for q in output_qs}
-        preserve_set = {q.qubit for q in preserve_qs}
 
         try:
             yield scratch_qs, output_qs
@@ -167,5 +165,6 @@ class AncillaPool:
                 self.release_since(pool_mark)
                 raise
 
-            self._uncompute_since(circuit_mark, output_set | preserve_set)
-            self.release_since(pool_mark, (*output_qs, *preserve_qs))
+            self._uncompute_since(circuit_mark, output_set)
+            self.release_since(pool_mark, output_qs)
+
