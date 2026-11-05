@@ -215,6 +215,11 @@ def qaoa(
     penalty: float = 1.0, 
     iterations: int = 32, 
 ) -> dict[str, int] | None: 
+    """
+    returns lowest-objective feasible assignment observed in sample outcomes.
+    returns None if no feasible assignment was sampled. a None result does not 
+    prove that no feasible assignment exists.
+    """
     if iterations <= 0: 
         raise ValueError("iterations must be a positive integer")
 
