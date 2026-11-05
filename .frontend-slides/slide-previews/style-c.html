@@ -1,0 +1,138 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>qlang</title><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;800&family=Tektur:wght@600;800&family=Chakra+Petch:wght@400;600&family=Space+Mono&family=DM+Sans:wght@400;500;700&family=Bodoni+Moda:ital,wght@0,600;1,600&display=swap"><style>/* === FIXED STAGE === */
+/* ===========================================
+   FIXED 16:9 STAGE: MANDATORY BASE STYLES
+   Include this ENTIRE file in every presentation.
+   Slides are authored at 1920×1080 and scaled as a whole.
+   =========================================== */
+
+/* 1. Lock the browser viewport */
+html,
+body {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
+    background: var(--stage-bg, #000);
+}
+
+/* 2. Full-window deck viewport */
+.deck-viewport {
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+    background: var(--stage-bg, #000);
+}
+
+/* 3. Fixed 16:9 design canvas.
+   JavaScript sets transform: translate(...) scale(...). */
+.deck-stage {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 1920px;
+    height: 1080px;
+    overflow: hidden;
+    transform-origin: 0 0;
+    background: var(--slide-bg, #fff);
+}
+
+/* 4. Slides stack inside the fixed stage.
+   Content must be laid out at 1920×1080, not reflowed per device. */
+.slide {
+    position: absolute;
+    inset: 0;
+    width: 1920px;
+    height: 1080px;
+    overflow: hidden;
+    display: block;
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+    background: var(--slide-bg, #fff);
+}
+
+.slide.active,
+.slide.visible {
+    visibility: visible;
+    opacity: 1;
+    pointer-events: auto;
+    z-index: 1;
+}
+
+/* 5. Keep media inside authored slide bounds */
+img,
+video,
+canvas,
+svg {
+    max-width: 100%;
+    max-height: 100%;
+}
+
+/* 6. Presentation chrome stays outside the slide design system */
+.deck-controls {
+    position: fixed;
+    left: 50%;
+    bottom: 22px;
+    transform: translateX(-50%);
+    z-index: 1000;
+}
+
+/* 7. Print one fixed-size slide per page */
+@media print {
+    html,
+    body {
+        width: 1920px;
+        height: auto;
+        overflow: visible;
+        background: #fff;
+    }
+
+    .deck-viewport {
+        position: static;
+        overflow: visible;
+        background: #fff;
+    }
+
+    .deck-stage {
+        position: static;
+        width: auto;
+        height: auto;
+        transform: none !important;
+        background: none;
+    }
+
+    .slide {
+        position: relative;
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        pointer-events: auto !important;
+        width: 1920px;
+        height: 1080px;
+        break-after: page;
+        page-break-after: always;
+    }
+
+    .slide:last-child {
+        break-after: auto;
+        page-break-after: auto;
+    }
+
+    .deck-controls {
+        display: none !important;
+    }
+}
+
+/* 8. Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.2s !important;
+    }
+}
+
+/* === TITLE DESIGN === */
+*{box-sizing:border-box}body{margin:0}.slide{padding:88px 104px}header{display:flex;justify-content:space-between;font-size:24px;letter-spacing:3px}h1{margin:0;line-height:.99;font-weight:800;letter-spacing:-7px}.sub{font-size:36px;line-height:1.4;max-width:950px}footer{position:absolute;bottom:70px;left:104px;right:104px;display:flex;justify-content:space-between;font-size:23px}.reveal{animation:arrive .85s both}.sub{animation-delay:.2s}@keyframes arrive{from{opacity:0;transform:translateY(26px)}to{opacity:1;transform:translateY(0)}}
+:root{--slide-bg:#efece2;--stage-bg:#171e1b}.slide{font-family:'DM Sans';color:#173e34}header{font-size:24px}h1{font-family:'Bodoni Moda';font-size:151px;font-weight:600;letter-spacing:-6px;margin-top:130px;position:relative}h1 em{font-weight:600;color:#cb4829}.sub{margin-top:58px;max-width:800px}.orb{position:absolute;width:650px;height:650px;border:1px solid #173e3455;border-radius:50%;right:-140px;top:150px}.orb:before,.orb:after{content:'';position:absolute;border:1px solid #173e3455;border-radius:50%;inset:54px}.orb:after{inset:108px}.path{position:absolute;right:140px;top:430px;width:240px;height:240px;background:#cb4829;border-radius:50%}.path:after{content:'';position:absolute;left:90px;top:90px;width:60px;height:60px;background:#efece2;border-radius:50%}footer{border-top:1px solid #173e3466;padding-top:24px}</style></head><body><div class="deck-viewport"><main class="deck-stage"><section class="slide active"><div class="orb"></div><div class="path"></div><header><b>qlang / A BRIDGE TO QUANTUM</b><span>QISKIT</span></header><h1 class="reveal">Start with a problem.<br><em>Learn the quantum.</em></h1><p class="sub reveal">From everyday expressions to quantum search,<br>one understandable step at a time.</p><footer><span>EXPRESS. TRANSLATE. UNDERSTAND.</span><span>01</span></footer></section></main></div><script>function fit(){let s=Math.min(innerWidth/1920,innerHeight/1080);document.querySelector('.deck-stage').style.transform=`translate(${(innerWidth-1920*s)/2}px,${(innerHeight-1080*s)/2}px) scale(${s})`}addEventListener('resize',fit);fit();</script></body></html>

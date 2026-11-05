@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>qlang — Quadruply Quick Quantum Quad Squad</title><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;800&family=DM+Sans:wght@400;500;600;700&family=DM+Serif+Display:ital@0;1&family=Libre+Caslon+Display&family=Outfit:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>/* === MANDATORY FIXED STAGE === */
+/* ===========================================
+   FIXED 16:9 STAGE: MANDATORY BASE STYLES
+   Include this ENTIRE file in every presentation.
+   Slides are authored at 1920×1080 and scaled as a whole.
+   =========================================== */
+
+/* 1. Lock the browser viewport */
+html,
+body {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
+    background: var(--stage-bg, #000);
+}
+
+/* 2. Full-window deck viewport */
+.deck-viewport {
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+    background: var(--stage-bg, #000);
+}
+
+/* 3. Fixed 16:9 design canvas.
+   JavaScript sets transform: translate(...) scale(...). */
+.deck-stage {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 1920px;
+    height: 1080px;
+    overflow: hidden;
+    transform-origin: 0 0;
+    background: var(--slide-bg, #fff);
+}
+
+/* 4. Slides stack inside the fixed stage.
+   Content must be laid out at 1920×1080, not reflowed per device. */
+.slide {
+    position: absolute;
+    inset: 0;
+    width: 1920px;
+    height: 1080px;
+    overflow: hidden;
+    display: block;
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+    background: var(--slide-bg, #fff);
+}
+
+.slide.active,
+.slide.visible {
+    visibility: visible;
+    opacity: 1;
+    pointer-events: auto;
+    z-index: 1;
+}
+
+/* 5. Keep media inside authored slide bounds */
+img,
+video,
+canvas,
+svg {
+    max-width: 100%;
+    max-height: 100%;
+}
+
+/* 6. Presentation chrome stays outside the slide design system */
+.deck-controls {
+    position: fixed;
+    left: 50%;
+    bottom: 22px;
+    transform: translateX(-50%);
+    z-index: 1000;
+}
+
+/* 7. Print one fixed-size slide per page */
+@media print {
+    html,
+    body {
+        width: 1920px;
+        height: auto;
+        overflow: visible;
+        background: #fff;
+    }
+
+    .deck-viewport {
+        position: static;
+        overflow: visible;
+        background: #fff;
+    }
+
+    .deck-stage {
+        position: static;
+        width: auto;
+        height: auto;
+        transform: none !important;
+        background: none;
+    }
+
+    .slide {
+        position: relative;
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        pointer-events: auto !important;
+        width: 1920px;
+        height: 1080px;
+        break-after: page;
+        page-break-after: always;
+    }
+
+    .slide:last-child {
+        break-after: auto;
+        page-break-after: auto;
+    }
+
+    .deck-controls {
+        display: none !important;
+    }
+}
+
+/* 8. Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.2s !important;
+    }
+}
+
+
+/* === SHARED TYPOGRAPHY AND SPACING === */
+*{box-sizing:border-box} :root{--ink:#202c3b;--accent:#315c91;--muted:#526173;--line:#bfc8cf;--slide-bg:#f5f3ed;--stage-bg:#1d2630}
+.slide{color:var(--ink);font-family:'DM Sans',sans-serif;padding:80px 104px}
+header{display:flex;align-items:center;justify-content:space-between;height:56px}
+.brand{font:800 42px Manrope,sans-serif;letter-spacing:-2px}
+.eyebrow{font:500 22px 'IBM Plex Mono',monospace;letter-spacing:2px;text-transform:uppercase}
+h1{margin:0;font-weight:400;line-height:1.04;letter-spacing:-4px}
+p{margin:0}.subtitle{font-size:34px;line-height:1.5;color:var(--muted)}
+footer{position:absolute;left:104px;right:104px;bottom:64px;display:flex;justify-content:space-between;align-items:center;gap:32px;font-size:25px;line-height:1.4}
+.team{max-width:1000px}.team-label{display:block;font:400 17px 'IBM Plex Mono',monospace;letter-spacing:2px;text-transform:uppercase;margin-bottom:10px;color:var(--muted)}
+.page{font:400 21px 'IBM Plex Mono',monospace}.accent{color:var(--accent)}
+.quad{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;width:60px;height:60px}.quad i{background:var(--accent)}
+/* === ENTRANCE MOTION === */
+.reveal{animation:enter .65s cubic-bezier(.16,1,.3,1) both}.subtitle.reveal{animation-delay:.12s}
+@keyframes enter{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:translateY(0)}}
+@media(prefers-reduced-motion:reduce){.reveal{animation:none}}
+
+
+/* === BLUE MARGINALIA === */
+:root{--slide-bg:#f1eee5;--accent:#365d85;--muted:#566270}
+header{border-bottom:1px solid var(--line);padding-bottom:36px;height:92px}.brand{font-size:35px}.eyebrow{font-size:19px}
+h1{position:absolute;left:104px;top:286px;font-family:'DM Serif Display',serif;font-size:146px;line-height:1.06;letter-spacing:-3px}
+h1 em{color:var(--accent)}.subtitle{position:absolute;left:112px;top:660px;width:1000px;font-size:33px}
+.diagram{position:absolute;right:110px;top:300px;width:360px;height:420px;color:var(--accent)}
+footer{border-top:1px solid var(--line);padding-top:28px}.team-label{font-size:16px}.page{color:var(--accent)}
+
+/* === ENLARGED TEAM CREDIT === */
+.team{font-size:34px;max-width:1300px;letter-spacing:-.35px}
+.team-label{font-size:18px;letter-spacing:2px;margin-bottom:10px}
+/* === QUANTUM FIGURES === */
+.diagram{right:100px;top:280px;width:380px;height:470px}
+.diagram text{fill:currentColor;font-family:'DM Sans',sans-serif;font-size:21px;letter-spacing:0}
+.diagram .figure-heading{font-size:25px;font-weight:500}
+.diagram .figure-note{font-size:19px;fill:var(--muted)}
+.diagram .math{font-family:'DM Serif Display',serif;font-size:28px}
+</style></head>
+<body><div class="deck-viewport"><main class="deck-stage"><section class="slide active" aria-label="qlang title slide"><header><span class="brand">qlang<span class="accent">.</span></span><span class="eyebrow">Expressions → quantum circuits</span></header><h1 class="reveal">Think in problems.<br><em>Learn the quantum.</em></h1><p class="subtitle reveal">A familiar language. A visible bridge to Qiskit.</p><svg class="diagram" viewBox="0 0 380 470" fill="none" role="img" aria-label="Ideal two-qubit Grover search with state 11 marked: one iteration raises its probability from one quarter to one.">
+<!-- Ideal Grover search: four equiprobable states, one marked state,
+     one Grover iteration. Bars depict exact ideal final probabilities. -->
+<text x="190" y="58" text-anchor="middle" class="figure-heading">Grover search</text>
+<path d="M56 120V356H342" stroke="currentColor" stroke-opacity=".45" stroke-width="1.5"/>
+<text x="42" y="134" text-anchor="end" class="figure-note">1</text>
+<text x="42" y="361" text-anchor="end" class="figure-note">0</text>
+<path d="M56 300H342" stroke="currentColor" stroke-opacity=".5" stroke-width="1.5" stroke-dasharray="5 6"/>
+<text x="64" y="288" class="figure-note">initial probability: ¼</text>
+<path d="M94 350V356M162 350V356M230 350V356" stroke="currentColor" stroke-width="7"/>
+<rect x="281" y="132" width="36" height="224" rx="3" fill="currentColor"/>
+<circle cx="299" cy="116" r="5" fill="#a97850"/>
+<text x="94" y="389" text-anchor="middle">00</text>
+<text x="162" y="389" text-anchor="middle">01</text>
+<text x="230" y="389" text-anchor="middle">10</text>
+<text x="299" y="389" text-anchor="middle">11</text>
+<text x="190" y="430" text-anchor="middle" class="figure-note">Ideal two-qubit example</text>
+</svg><footer><div class="team"><span class="team-label">Presented by</span>Quadruply Quick Quantum Quad Squad</div><span class="page">QISKIT · 01</span></footer></section></main></div>
+<script>
+/* === UNIFORM 16:9 STAGE SCALING === */
+function fit(){const s=Math.min(innerWidth/1920,innerHeight/1080);document.querySelector('.deck-stage').style.transform=`translate(${(innerWidth-1920*s)/2}px,${(innerHeight-1080*s)/2}px) scale(${s})`;}
+addEventListener('resize',fit);fit();
+</script></body></html>
