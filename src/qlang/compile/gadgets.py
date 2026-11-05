@@ -55,6 +55,9 @@ def q_OR(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
 @gadget(BitType.XOR)
 def q_XOR(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
     qa, qb = a[0], b[0]
+    if qa == qb:
+        return [qctx.pool.alloc()]
+
     qout = qctx.pick_one_use(qa, qb)
     if qout != qa:
         qctx.cx(qa, qout)
@@ -75,6 +78,8 @@ def q_NOT(qctx: QCtx, node: ASTNode, a: list[Q]) -> list[Q]:
 def q_EQ(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
     width = max(len(a), len(b))
     qeq = []
+
+
     with qctx.pool.scratch(width, 1) as (bitwise_eq, qout):
         for i in range(width):
             qA = a[i] if i < len(a) else None
