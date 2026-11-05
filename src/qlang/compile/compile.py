@@ -7,7 +7,7 @@ from qiskit.circuit import QuantumCircuit, Qubit
 
 from ..expression import ASTNode, Bit, BitType, UInt, UIntType, node_type
 from ..optimize import optimize_expr
-from .gadgets import _GADGETS, get_gadget
+from .gadgets import get_gadget
 from .oracle import Oracle
 from .qubit import AncillaPool, Q, QCtx
 
@@ -105,7 +105,7 @@ def compile_oracle(expr: Bit) -> Oracle:
             out_bits = (cast(Bit, node),)
         if len(out) != expected_width:
             raise RuntimeError(
-                f"gadget for {kind.name} returned {len(out)} qubit(s), expected {expected_width}"
+                f"gadget for {node_type(node).name} returned {len(out)} qubit(s), expected {expected_width}"
             )
 
         tagged = [tag(q, b) for q, b in zip(out, out_bits)]
