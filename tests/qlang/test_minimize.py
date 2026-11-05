@@ -195,11 +195,6 @@ def test_extract_linear_supports_bit_leaves(p):
     assert extract_linear(~p) is NotImplemented
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="extract_linear drops variable products instead of rejecting nonlinear expressions",
-)
 @pytest.mark.parametrize(
     "build",
     [
@@ -254,36 +249,12 @@ def test_expand_to_bits_preserves_layout_and_signed_weights(coefficients, widths
     assert widths == original_widths
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=pytest.fail.Exception,
-    reason="expand_to_bits silently drops coefficients for undeclared variables",
-)
 def test_expand_to_bits_rejects_variable_missing_from_layout():
     with pytest.raises(ValueError, match="missing"):
         expand_to_bits({"missing": 1}, {"x": 2})
 
 
-@pytest.mark.parametrize(
-    "penalty",
-    [
-        pytest.param(
-            0.0,
-            marks=pytest.mark.xfail(
-                strict=True, raises=AssertionError,
-                reason="the identity sum of squared weights is not multiplied by penalty",
-            ),
-        ),
-        1.0,
-        pytest.param(
-            4.0,
-            marks=pytest.mark.xfail(
-                strict=True, raises=AssertionError,
-                reason="the identity sum of squared weights is not multiplied by penalty",
-            ),
-        ),
-    ],
-)
+@pytest.mark.parametrize("penalty", [0.0, 1.0, 4.0])
 def test_squared_residual_scales_entire_identity_coefficient(penalty):
     operator = terms_to_op(squared_residuals(-1.0, {0: 2.0}, penalty), 1)
 
@@ -291,9 +262,6 @@ def test_squared_residual_scales_entire_identity_coefficient(penalty):
     np.testing.assert_allclose(operator.to_matrix(), penalty * np.eye(2), atol=1e-12)
 
 
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError, reason="squared_residuals adds each unordered pair twice"
-)
 def test_squared_residual_counts_each_pair_once():
     operator = terms_to_op(squared_residuals(-1.0, {0: 1.0, 1: 1.0}, 1.0), 2)
 
@@ -331,11 +299,6 @@ def test_terms_to_op_uses_qiskit_label_order():
     assert dict(operator.to_list()) == {"III": 2.0, "IIZ": -0.5, "ZIZ": 1.5}
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="linear-path Hamiltonian has doubled pair terms and an incorrectly scaled identity",
-)
 @pytest.mark.parametrize("with_objective", [False, True])
 def test_qaoa_linear_path_passes_squared_cost_to_ansatz(
     monkeypatch, sample_qaoa_counts, with_objective
@@ -363,11 +326,6 @@ def test_qaoa_linear_path_passes_squared_cost_to_ansatz(
     assert solution == ({"x": 0, "y": 3} if with_objective else {"x": 3, "y": 0})
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=pytest.fail.Exception,
-    reason="nonlinear objective is misclassified as linear instead of raising ValueError",
-)
 def test_qaoa_rejects_nonlinear_objective_on_linear_path(sample_qaoa_counts):
     x, y = var_uint("x", 2), var_uint("y", 2)
     sample_qaoa_counts({"0011": 1024})

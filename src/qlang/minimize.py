@@ -123,6 +123,8 @@ def extract_linear(expr: ASTNode) -> tuple[int | bool, dict[str, int]]:
             if res is NotImplemented: 
                 return NotImplemented
             left_const, left_coeffs, right_const, right_coeffs = res
+            if left_coeffs and right_coeffs: 
+                return NotImplemented
             const = left_const * right_const
             coeffs = {}
             if not left_coeffs: 
@@ -152,6 +154,9 @@ def expand_to_bits(
     coefficients: dict[str, int], 
     widths: dict[str, int],
 ) -> dict[int, float]: 
+    for name in coefficients.keys(): 
+        if name not in widths: 
+            raise ValueError(f"width of coefficient '{name}' not found")
     weights = {}
     offset = 0
     for name, width in widths.items(): 
@@ -172,13 +177,13 @@ def squared_residuals(
 ) -> dict[int, float]: 
     terms = defaultdict(float)
     a = constant + sum(weights.values()) / 2
-    terms[0] += penalty * a * a + sum(w * w for w in weights.values()) / 4
+    terms[0] += penalty * (a * a + sum(w * w for w in weights.values()) / 4)
     for q1, w1 in weights.items(): 
         terms[1 << q1] += -penalty * a * w1
         for q2, w2 in weights.items(): 
             if q1 == q2: 
                 continue
-            terms[(1 << q1) | (1 << q2)] += penalty * w1 * w2 / 2
+            terms[(1 << q1) | (1 << q2)] += penalty * w1 * w2 / 2 / 2  # extra division for double-counted terms
     return terms
 
 # calculates Pauli coefficients for an objective applied linearly
