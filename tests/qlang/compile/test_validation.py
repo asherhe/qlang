@@ -1,14 +1,16 @@
 """Validation regression tests: malformed expressions are rejected before compilation.
 
-Each case patches ``qlang.compile.compile.QuantumCircuit`` so that a passing test also
-proves the rejection happens before any circuit is allocated.
+Malformed-node cases deliberately use constructors or mutate fields to exercise
+the compiler boundary independently of the factories. Each rejection case patches
+``qlang.compile.compile.QuantumCircuit`` to prove that rejection happens before
+any circuit is allocated.
 """
 
 import unittest
 from unittest.mock import patch
 
 from qlang.compile import compile_oracle
-from qlang.compile.compile import parse_input
+from qlang.compile.compile import validate_expression
 from qlang.expression import (
     Bit,
     BitType,
@@ -22,17 +24,17 @@ from qlang.expression import (
 )
 
 
-# Skipped: these tests are out of date with the current compile API. Most of them
-# mutate internal node fields directly, which the public API no longer exposes, so
-# they test states users cannot reach. Skipped until we decide whether to rewrite or drop them.
-@unittest.skip("validation tests are out of date with the current compile API")
 class TestValidation(unittest.TestCase):
+    def setUp(self):
+        circuit_patch = patch("qlang.compile.compile.QuantumCircuit")
+        circuit = circuit_patch.start()
+        self.addCleanup(circuit_patch.stop)
+        self.addCleanup(circuit.assert_not_called)
+
     def test_uint_root_fails_before_circuit_creation(self):
         expr = var_uint("x", 2)
-        with patch("qlang.compile.compile.QuantumCircuit") as circuit:
-            with self.assertRaisesRegex(TypeError, "expects a Bit"):
-                compile_oracle(expr)  # pyright: ignore[reportArgumentType]
-            circuit.assert_not_called()
+        with self.assertRaisesRegex(TypeError, "expects a Bit"):
+            compile_oracle(expr)  # pyright: ignore[reportArgumentType]
 
     def test_invalid_nodes_and_operand_counts_are_rejected(self):
         a = var_bit("a")
@@ -55,12 +57,10 @@ class TestValidation(unittest.TestCase):
             Bit(bit_type=BitType.UINT, index=2, parent_uint=parent),
             Bit(bit_type=BitType.UINT, index=0),
         )
-        with patch("qlang.compile.compile.QuantumCircuit") as circuit:
-            for expr in cases:
-                with self.subTest(node_id=id(expr)):
-                    with self.assertRaises((TypeError, ValueError)):
-                        compile_oracle(expr)
-            circuit.assert_not_called()
+        for expr in cases:
+            with self.subTest(node_id=id(expr)):
+                with self.assertRaises((TypeError, ValueError)):
+                    compile_oracle(expr)
 
     def test_cycles_are_rejected(self):
         cycle = Bit(bit_type=BitType.NOT)
@@ -85,17 +85,15 @@ class TestValidation(unittest.TestCase):
             ("bits", (const_bit(False), const_bit(False))),
             ("operands", []),
         )
-        with patch("qlang.compile.compile.QuantumCircuit") as circuit:
-            for field, value in cases:
-                with self.subTest(field=field, value=value):
-                    original = getattr(x, field)
-                    try:
-                        setattr(x, field, value)
-                        with self.assertRaises((TypeError, ValueError)):
-                            compile_oracle(root)
-                    finally:
-                        setattr(x, field, original)
-            circuit.assert_not_called()
+        for field, value in cases:
+            with self.subTest(field=field, value=value):
+                original = getattr(x, field)
+                try:
+                    setattr(x, field, value)
+                    with self.assertRaises((TypeError, ValueError)):
+                        compile_oracle(root)
+                finally:
+                    setattr(x, field, original)
 
     def test_owned_uint_bit_metadata_is_checked(self):
         x = var_uint("x", 2)
@@ -150,13 +148,11 @@ class TestValidation(unittest.TestCase):
             (Bit(bit_type=BitType.NOT),),
             (Bit(bit_type=BitType.CONST, value=1),),  # pyright: ignore[reportArgumentType]
         )
-        with patch("qlang.compile.compile.QuantumCircuit") as circuit:
-            for children in invalid_children:
-                with self.subTest(children=children):
-                    wrapper.bits = children  # pyright: ignore[reportAttributeAccessIssue]
-                    with self.assertRaises((TypeError, ValueError)):
-                        compile_oracle(root)
-            circuit.assert_not_called()
+        for children in invalid_children:
+            with self.subTest(children=children):
+                wrapper.bits = children  # pyright: ignore[reportAttributeAccessIssue]
+                with self.assertRaises((TypeError, ValueError)):
+                    compile_oracle(root)
 
     def test_cycles_through_bits_wrapper_are_rejected(self):
         negated = ~var_bit("a")
@@ -178,6 +174,28 @@ class TestValidation(unittest.TestCase):
             with self.subTest(node_id=id(node)):
                 with self.assertRaises(TypeError):
                     compile_oracle(expr)
+
+
+class TestValidExpressions(unittest.TestCase):
+    def test_shared_graphs_and_uint_back_references_are_not_cycles(self):
+        a, b = var_bit("a"), var_bit("b")
+        x, y = var_uint("x", 2), var_uint("y", 3)
+        shared = a & b
+        wrapper = bits_uint((shared, x.bits[0], const_bit(False)))
+        expressions = (
+            const_bit(True),
+            shared ^ (shared | a),
+            a == b,
+            a < b,
+            x.bits[1],
+            x == const_uint(1, 2),
+            (x + y) != 0,
+            wrapper == 1,
+            bits_uint((x.bits[0], x.bits[0])) != 0,
+        )
+        for expr in expressions:
+            with self.subTest(node_id=id(expr)):
+                validate_expression(expr)
 
 
 if __name__ == "__main__":

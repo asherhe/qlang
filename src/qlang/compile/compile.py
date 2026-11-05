@@ -174,9 +174,10 @@ def validate_expression(expr: Bit) -> None:
         if node_id in visited:
             return
 
-        children = node.children
-        if not isinstance(children, tuple):
-            raise TypeError("Node children must be a tuple; use (operand,) for one operand")
+        if not isinstance(node, (Bit, UInt)):
+            raise TypeError(f"unsupported node type {type(node).__name__}")
+        if not isinstance(node.operands, tuple):
+            raise TypeError("node operands must be a tuple; use (operand,) for one operand")
 
         if isinstance(node, Bit):
             # BitType is an IntEnum: checking its class prevents an unrelated
@@ -190,9 +191,26 @@ def validate_expression(expr: Bit) -> None:
                 )
             if node.bit_type in (BitType.VAR, BitType.UINT):
                 input_slot(node)
+                if node.bit_type == BitType.UINT:
+                    parent = cast(UInt, node.parent_uint)
+                    if not isinstance(parent.bits, tuple):
+                        raise TypeError("UInt bits must be a tuple")
+                    if len(parent.bits) != parent.width:
+                        raise ValueError("UInt bits must match its width")
+                    if parent.bits[cast(int, node.index)] is not node:
+                        raise ValueError("indexed bit must be stored at its position in its parent")
             elif node.bit_type == BitType.CONST:
                 if type(node.value) is not bool:
                     raise TypeError("constant bit nodes should be true or false")
+            if node.operands:
+                if node.bit_type in (BitType.NOT, BitType.AND, BitType.OR, BitType.XOR):
+                    if not all(isinstance(op, Bit) for op in node.operands):
+                        raise TypeError("Boolean operations require Bit operands")
+                elif not (
+                    all(isinstance(op, Bit) for op in node.operands)
+                    or all(isinstance(op, UInt) for op in node.operands)
+                ):
+                    raise TypeError("comparisons require two Bits or two UInts")
         elif isinstance(node, UInt):
             if not isinstance(node.uint_type, UIntType):
                 raise TypeError("A UInt node's uint_type must be a UIntType member")
@@ -201,14 +219,53 @@ def validate_expression(expr: Bit) -> None:
                 raise ValueError(
                     f"{node.uint_type.name} expects {expected} operand(s), got {len(node.operands)}"
                 )
-        else:
-            raise TypeError(f"unsupported node type {type(node).__name__}")
+            if type(node.width) is not int or node.width < 1:
+                raise ValueError("UInt width must be a positive integer")
+            if node.uint_type == UIntType.VAR:
+                if not isinstance(node.name, str) or not node.name.strip():
+                    raise ValueError("input needs a name")
+            if not isinstance(node.bits, tuple):
+                raise TypeError("UInt bits must be a tuple")
+            if len(node.bits) != node.width:
+                raise ValueError("UInt bits must match its width")
+            if node.uint_type == UIntType.CONST:
+                if not all(
+                    isinstance(bit, Bit) and bit.bit_type == BitType.CONST
+                    for bit in node.bits
+                ):
+                    raise TypeError("constant UInt requires constant Bit nodes")
+            elif node.uint_type == UIntType.BITS:
+                if not all(isinstance(bit, Bit) for bit in node.bits):
+                    raise TypeError("UInt bits must be Bit nodes")
+            else:
+                # Owned bits point back to this UInt. Check their metadata here,
+                # without following that back-reference as a dependency cycle.
+                for index, bit in enumerate(node.bits):
+                    if (
+                        not isinstance(bit, Bit)
+                        or not isinstance(bit.bit_type, BitType)
+                        or bit.bit_type != BitType.UINT
+                    ):
+                        raise ValueError("UInt must own indexed Bit nodes")
+                    if type(bit.index) is not int or bit.index != index:
+                        raise ValueError("owned bit indices must match their positions")
+                    if bit.parent_uint is not node:
+                        raise ValueError("owned bit must reference its parent UInt")
+                    if not isinstance(bit.operands, tuple) or bit.operands:
+                        raise ValueError("owned bit expects no operands")
+            if not all(isinstance(op, UInt) for op in node.operands):
+                raise TypeError("UInt operations require UInt operands")
 
         # Recurse so validation also reaches deeply nested operands. A valid
         # leaf has an empty tuple, which naturally ends that branch.
         visiting.add(node_id)
         for operand in node.operands:
             visit(operand)
+        if isinstance(node, UInt) and node.uint_type in (UIntType.CONST, UIntType.BITS):
+            for bit in node.bits:
+                visit(bit)
+        elif isinstance(node, Bit) and node.bit_type == BitType.UINT:
+            visit(cast(UInt, node.parent_uint))
         visiting.remove(node_id)
         visited.add(node_id)
 
