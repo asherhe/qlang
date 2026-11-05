@@ -95,9 +95,6 @@ def test_qaoa_runs_real_circuit_and_decodes_mixed_inputs(p):
     assert qaoa([p, x], constraint, iterations=2) == {"p": 1, "x": 2}
 
 
-@pytest.mark.xfail(
-    strict=True, raises=KeyError, reason="a constant cost omits the gamma parameter"
-)
 def test_qaoa_accepts_constant_zero_cost(p):
     solution = qaoa([p], const_bit(True), iterations=2)
 
@@ -152,15 +149,7 @@ def test_qaoa_picks_lowest_objective_among_feasible_samples(p, q, sample_qaoa_co
     "with_objective",
     [
         pytest.param(False, id="feasibility"),
-        pytest.param(
-            True,
-            id="objective",
-            marks=pytest.mark.xfail(
-                strict=True,
-                raises=ValueError,
-                reason="objective selection calls min without a default for no feasible samples",
-            ),
-        ),
+        pytest.param(True, id="objective"),
     ],
 )
 def test_qaoa_returns_none_when_no_feasible_sample(p, q, sample_qaoa_counts, with_objective):

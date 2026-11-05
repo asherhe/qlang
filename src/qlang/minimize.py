@@ -62,15 +62,15 @@ def qaoa_creator(cost_operator: SparsePauliOp):
     # get Parameter objects to bind angles by name 
     parameters = {parameter.name: parameter for parameter in ansatz.parameters}
     beta_param = parameters["β[0]"]
-    gamma_param = parameters["γ[0]"]
+    gamma_param = parameters.get("γ[0]")
 
     # returns a quantum statevector resulting from applying the ansatz with params
     def state_at(beta, gamma) -> Statevector: 
         # binds β[0] to the value of beta
-        bound = ansatz.assign_parameters({
-            beta_param: beta, 
-            gamma_param: gamma,
-        }, inplace=False)
+        bindings = {beta_param: beta}
+        if gamma_param is not None: 
+            bindings[gamma_param] = gamma
+        bound = ansatz.assign_parameters(bindings, inplace=False)
         if bound is None: 
             raise RuntimeError("expected parameter binding to return a new circuit")
         return Statevector.from_instruction(bound)
@@ -106,4 +106,4 @@ def qaoa(
     feasible = (assignment for assignment in observed if evaluate(constraint, assignment))
     if objective is None: 
         return next(feasible, None)
-    return min(feasible, key=objective)
+    return min(feasible, key=objective, default=None)
