@@ -83,6 +83,7 @@ def qaoa_creator(cost_operator: SparsePauliOp):
 
     return state_at, mean_cost
 
+# guards against results that are NotImplemented in recursion
 def extract_checker(expr: ASTNode): 
     left, right = expr.operands
     left_res, right_res = extract_linear(left), extract_linear(right)
@@ -92,6 +93,7 @@ def extract_checker(expr: ASTNode):
     right_const, right_coeffs = right_res
     return left_const, left_coeffs, right_const, right_coeffs
 
+# extracts linear expressions to the left and right of the equals sign
 def extract_linear(expr: ASTNode) -> tuple[int | bool, dict[str, int]]: 
     type = node_type(expr)
     if isinstance(expr, Bit): 
@@ -129,6 +131,7 @@ def extract_linear(expr: ASTNode) -> tuple[int | bool, dict[str, int]]:
             return const, coeffs
     return NotImplemented
 
+# evaluate a constraint expression to see if it is linear, and move variables and constants to one side 
 def evaluate_linear(expr: Bit) -> tuple[int | bool, dict[str, int]]: 
     if len(expr.operands) == 2 and expr.bit_type == BitType.EQ: 
         res = extract_checker(expr)
