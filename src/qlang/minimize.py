@@ -1,9 +1,11 @@
-from .expression import Bit, UInt
+from .expression import ASTNode, Bit, UInt, BitType, UIntType, node_type
 from .evaluate import evaluate
 
 from math import pi
-from itertools import product
+from itertools import product, combinations
+from collections import defaultdict
 from collections.abc import Callable
+from typing import cast
 
 from qiskit.quantum_info import SparsePauliOp, Statevector
 from qiskit.circuit.library import QAOAAnsatz
@@ -22,7 +24,7 @@ def decode_state(state: int, widths: dict[str, int]) -> dict[str, int]:
 def constraint_to_cost_op(
     constraint: Bit, 
     widths: dict[str, int], 
-    objective: Callable[[dict[str, int]], float] | None = None,  # a lower result is preferred
+    objective: UInt | None = None,  # a lower result is preferred
     penalty: float = 1.0,
 ) -> SparsePauliOp: 
     num_qubits = sum(widths.values())
@@ -33,7 +35,7 @@ def constraint_to_cost_op(
     for state in range(basis_size): 
         assignment = decode_state(state, widths)
         violation = 0 if evaluate(constraint, assignment) else 1
-        base_cost = 0.0 if objective is None else objective(assignment)
+        base_cost = 0.0 if objective is None else evaluate(objective, assignment)
         energies.append(base_cost + penalty * violation)
 
     terms = []
@@ -82,10 +84,134 @@ def qaoa_creator(cost_operator: SparsePauliOp):
 
     return state_at, mean_cost
 
+# guards against results that are NotImplemented in recursion
+def extract_checker(expr: ASTNode): 
+    left, right = expr.operands
+    left_res, right_res = extract_linear(left), extract_linear(right)
+    if left_res is NotImplemented or right_res is NotImplemented: 
+        return NotImplemented            
+    left_const, left_coeffs = left_res
+    right_const, right_coeffs = right_res
+    return left_const, left_coeffs, right_const, right_coeffs
+
+# extracts linear expressions to the left and right of the equals sign
+def extract_linear(expr: ASTNode) -> tuple[int | bool, dict[str, int]]: 
+    type = node_type(expr)
+    if isinstance(expr, Bit): 
+        if type == BitType.CONST: 
+            return cast(bool, expr.value), {}
+        if type == BitType.VAR: 
+            return 0, {cast(str, expr.name): 1}
+        return NotImplemented
+    if isinstance(expr, UInt): 
+        if type == UIntType.CONST: 
+            return expr.const_value, {}
+        if type == UIntType.VAR: 
+            return 0, {cast(str, expr.name): 1}
+        if type == UIntType.ADD: 
+            res = extract_checker(expr)
+            if res is NotImplemented: 
+                return NotImplemented
+            left_const, left_coeffs, right_const, right_coeffs = res
+            const = left_const + right_const
+            coeffs = left_coeffs.copy()
+            for name, coeff in right_coeffs.items(): 
+                coeffs[name] = coeffs.get(name, 0) + coeff
+            return const, coeffs
+        if type == UIntType.MUL: 
+            res = extract_checker(expr)
+            if res is NotImplemented: 
+                return NotImplemented
+            left_const, left_coeffs, right_const, right_coeffs = res
+            if left_coeffs and right_coeffs: 
+                return NotImplemented
+            const = left_const * right_const
+            coeffs = {}
+            if not left_coeffs: 
+                coeffs = {key: value * left_const for key, value in right_coeffs.items() if value * left_const != 0}
+            else: 
+                coeffs = {key: value * right_const for key, value in left_coeffs.items() if value * right_const != 0}
+            return const, coeffs
+    return NotImplemented
+
+# evaluate a constraint expression to see if it is linear, and move variables and constants to one side 
+def evaluate_linear(expr: Bit) -> tuple[int | bool, dict[str, int]]: 
+    if len(expr.operands) == 2 and expr.bit_type == BitType.EQ: 
+        res = extract_checker(expr)
+        if res is NotImplemented: 
+            return NotImplemented
+        left_const, left_coeffs, right_const, right_coeffs = res
+        const = left_const - right_const
+        coeffs = left_coeffs.copy()
+        for name, coeff in right_coeffs.items(): 
+            coeffs[name] = coeffs.get(name, 0) - coeff
+        return const, coeffs
+    return NotImplemented
+
+# expands a list of coefficient assignments to a bit representation of each variable
+# e.g. 3x of width 2 becomes 3x[0] + 6x[1]
+def expand_to_bits(
+    coefficients: dict[str, int], 
+    widths: dict[str, int],
+) -> dict[int, float]: 
+    for name in coefficients.keys(): 
+        if name not in widths: 
+            raise ValueError(f"width of coefficient '{name}' not found")
+    weights = {}
+    offset = 0
+    for name, width in widths.items(): 
+        coeff = coefficients.get(name, 0)
+        for idx in range(width): 
+            qubit = offset + idx
+            if coeff != 0: 
+                weights[qubit] = coeff * (1 << idx)
+        offset += widths[name]
+    return weights
+
+# calculates Pauli coefficients for a linear constraint
+# 0 means identity, 1 << i means Zi, (1 << i) | (i << j) means ZiZj
+def squared_residuals(
+    constant: float, 
+    weights: dict[int, float], 
+    penalty: float,
+) -> dict[int, float]: 
+    terms = defaultdict(float)
+    a = constant + sum(weights.values()) / 2
+    terms[0] += penalty * (a * a + sum(w * w for w in weights.values()) / 4)
+    for q1, w1 in weights.items(): 
+        terms[1 << q1] += -penalty * a * w1
+        for q2, w2 in weights.items(): 
+            if q1 == q2: 
+                continue
+            terms[(1 << q1) | (1 << q2)] += penalty * w1 * w2 / 2 / 2  # extra division for double-counted terms
+    return terms
+
+# calculates Pauli coefficients for an objective applied linearly
+def linear_objective_terms(constant: float, weights: dict[int, float]) -> dict[int, float]: 
+    terms = {0: constant + sum(val for val in weights.values()) / 2}
+    for q, w in weights.items(): 
+        terms[1 << q] = -w / 2
+    return terms
+
+# converts linear terms into SparsePauliOp to feed into QAOAAnsatz
+def terms_to_op(terms: dict[int, float], num_qubits: int) -> SparsePauliOp: 
+    pauli_terms = []
+    for mask, coeff in terms.items(): 
+        if coeff == 0: 
+            continue
+        label = "".join(
+            "Z" if mask & (1 << qubit) else "I"
+            for qubit in reversed(range(num_qubits))
+        )
+        pauli_terms.append((label, coeff))
+    if not pauli_terms: 
+        pauli_terms.append(("I" * num_qubits, 0.0))
+    return SparsePauliOp.from_list(pauli_terms)
+
 def qaoa(
     vars: list[Bit | UInt], 
     constraint: Bit, 
-    objective: Callable[[dict[str, int]], float] | None = None, 
+    objective: UInt | None = None, 
     penalty: float = 1.0, 
     iterations: int = 32, 
 ) -> dict[str, int] | None: 
@@ -97,7 +223,28 @@ def qaoa(
             widths[var.name] = 1
     grid = [i * 2*pi / iterations for i in range(iterations)]
 
-    operator = constraint_to_cost_op(constraint, widths, objective, penalty)
+    # NOTE: if constraint is linear, the program also expects a linear objective
+    linear = evaluate_linear(constraint)
+    if linear is not NotImplemented: 
+        # manipulate constraint equation to one side
+        constant, coefficients = linear
+        weights = expand_to_bits(coefficients, widths)
+        terms = squared_residuals(float(constant), weights, penalty)
+
+        if objective is not None: 
+            # objective is an expression, not an equation, so extract() is used instead of evaluate()
+            objective_linear = extract_linear(objective)
+            if objective_linear is NotImplemented: 
+                raise ValueError("linear objective is expected for linear constraint")
+            objective_constant, objective_coeff = objective_linear
+            objective_weights = expand_to_bits(objective_coeff, widths)
+            objective_terms = linear_objective_terms(objective_constant, objective_weights)
+            for mask, coeff in objective_terms.items(): 
+                terms[mask] = terms.get(mask, 0) + coeff
+
+        operator = terms_to_op(terms, sum(widths.values()))
+    else: 
+        operator = constraint_to_cost_op(constraint, widths, objective, penalty)
     state_at, mean_cost = qaoa_creator(operator)
     best_angles = min(product(grid, repeat=2), key=mean_cost)
 
@@ -106,4 +253,7 @@ def qaoa(
     feasible = (assignment for assignment in observed if evaluate(constraint, assignment))
     if objective is None: 
         return next(feasible, None)
-    return min(feasible, key=objective, default=None)
+
+    def objective_cost(assignment: dict[str, int]) -> int: 
+        return evaluate(objective, assignment)
+    return min(feasible, key=objective_cost, default=None)
