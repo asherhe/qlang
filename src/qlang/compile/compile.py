@@ -1,19 +1,25 @@
-from __future__ import with_statement
+from __future__ import annotations
+
+from dataclasses import replace
 from typing import cast
 
-from qiskit.circuit import AncillaQubit, QuantumCircuit
+from qiskit.circuit import QuantumCircuit, Qubit
 
 from ..expression import ASTNode, Bit, BitType, UInt, UIntType, node_type
 from ..optimize import optimize_expr
+from .gadgets import GADGETS
 from .oracle import Oracle
-from .gadgets import quantumNOT, quantumXOR, quantumAND, quantumOR, quantumNE, quantumLT, quantumADD
-from .qubit import AncillaPool, QCtx
+from .qubit import AncillaPool, Q, QCtx
 
 def compile_oracle(expr: Bit) -> Oracle:
     """Compile decomposed Boolean logic into a clean phase oracle.
 
     Inputs and their bit positions are recorded in inputs. Phase mode has no
     external output qubits, so output is empty. All workspace starts/ends at zero.
+
+    this function owns the creation of every Q. only leaves (variables and constants) are
+    initialized up front; every other node is built on the fly by its gadget, and the Qs the
+    gadget returns are annotated with one_use here.
     """
     if not isinstance(expr, Bit):
         raise TypeError(
@@ -24,142 +30,108 @@ def compile_oracle(expr: Bit) -> Oracle:
     expr = cast(Bit, optimize_expr(expr))
 
     # all ASTNodes in the expression in topological order
-    # id -> ASTNode
     order = parse_input(expr)
-    nodes: dict[int, ASTNode] = {id(node): node for node in order}
-
-    # Qs for gadget operands are built on demand by keying this dict
+    # how many operations consume each Bit's qubit, keyed by id(Bit)
     uses = count_uses(order, expr)
 
-    qubit_allocation: dict[int, int] = {}  # id -> qubit index
-    uint_qubits: dict[int, list[int]] = {} # id -> qubits
-    inputs: dict[str, list[int]] = {}      # input name -> qubit indices
-    clean_ancillas: list[int] = []         # list[qubit id]
-    qubit_label = 0
+    circuit = QuantumCircuit()
+    pool = AncillaPool(circuit)
+    qctx = QCtx(circuit, pool)
 
-    # construct registry of qubits
-    # each ASTNode contributes only itself to the registry, as its child nodes
-    # will have already been iterated through
-    for node_id, node in nodes.items():
-        kind = node_type(node)
-        is_bit = isinstance(node, Bit)
-        is_uint = isinstance(node, UInt)
+    # id(node) -> qubits of the node. a Bit has one, a UInt has one per bit (LSB first)
+    qubits: dict[int, list[Q]] = {}
+    # var name -> qubits of the node
+    inputs: dict[str, list[Q]] = {}
 
-        bits: tuple[Bit, ...] = ()
-        if is_bit:
-            # UINT bits are allocated by their parent UInt node below
-            if kind != BitType.UINT:
-                bits = (node,)
-        elif is_uint:
-            if kind == UIntType.VAR:
-                inputs[cast(str, node.name)] = []
-            # BITS uints do not own their own bits
-            if kind == UIntType.BITS:
-                uint_qubits[id(node)] = [qubit_allocation[id(b)] for b in node.bits]
-            else:
-                bits = node.bits
-                uint_qubits[id(node)] = []
+    def tag(q: Q, bit: Bit) -> Q:
+        """update Q one_use metadata for a bit"""
+        return replace(q, one_use=uses.get(id(bit), 0) == 1)
 
-        for bit in bits:
-            qubit_allocation[id(bit)] = qubit_label
-            match bit.bit_type:
-                case BitType.CONST:
-                    clean_ancillas.append(qubit_label)
-                case BitType.VAR:
-                    # single-bit variable
-                    inputs[cast(str, bit.name)] = [qubit_label]
-                case BitType.UINT:
-                    parent = cast(UInt, bit.parent_uint)
-                    if parent.uint_type == UIntType.VAR:
-                        inputs[cast(str, parent.name)].append(qubit_label)
-                    else:
-                        # part of a computed uint, mark as ancilla
-                        clean_ancillas.append(qubit_label)
-                case _:
-                    # all other (bit operators) - mark as ancilla bit
-                    clean_ancillas.append(qubit_label)
+    def new_variable(bit: Bit) -> Q:
+        raw = Qubit()
+        circuit.add_bits([raw])
+        return tag(Q(raw), bit)
 
-            # current node is always the parent
-            if is_uint:
-                uint_qubits[node_id].append(qubit_label)
+    def init_const(bit: Bit) -> Q:
+        # CONST bits are shared by the node cache, so only ever initialize one once
+        if id(bit) not in qubits:
+            q = pool.alloc()
+            if bit.value:
+                qctx.x(q)
+            qubits[id(bit)] = [tag(q, bit)]
+        return qubits[id(bit)][0]
 
-            qubit_label += 1
-
-    if id(expr) in clean_ancillas:
-        clean_ancillas.remove(id(expr))
-
-    compute = QuantumCircuit(qubit_label)
-    pool = AncillaPool(compute)
-    qctx = QCtx(compute, pool)
-
-    def fresh_scratch() -> int:
-        """callback to allocate a new ancilla qubit"""
-        index = compute.num_qubits
-        compute.add_bits([AncillaQubit()])
-        clean_ancillas.append(index)
-        return index
-
-    # translate the operation 
-    for node_id, node in nodes.items():
-        kind = node_type(node)
-        if node.is_leaf:
-            # initialize |1> CONST bits
-            if isinstance(node, Bit) and kind == BitType.CONST and node.value:
-                compute.x(qubit_allocation[node_id])
-        # translate operator nodes
-        elif isinstance(node, Bit):
-            node_qubit = qubit_allocation[node_id]
-            # check if primitive operator
-            if kind not in (BitType.NOT, BitType.XOR, BitType.AND, BitType.OR, BitType.NE, BitType.GT):
-                raise TypeError(f"cannot compile non-primitive bit operator {node}")
-
-            if kind == BitType.NOT:
-                qubitA = qubit_allocation[id(node.operands[0])]
-                quantumNOT(compute, qubitA, node_qubit)
-            elif kind in (BitType.XOR, BitType.AND, BitType.OR):
-                qubitA = qubit_allocation[id(node.operands[0])]
-                qubitB = qubit_allocation[id(node.operands[1])]
-                if kind == BitType.XOR:
-                    quantumXOR(compute, qubitA, qubitB, node_qubit)
-                elif kind == BitType.AND:
-                    quantumAND(compute, qubitA, qubitB, node_qubit)
-                elif kind == BitType.OR:
-                    quantumOR(compute, qubitA, qubitB, node_qubit)
-            elif kind in (BitType.NE, BitType.LT):
-                # comparison operators
-                op_qubits = [[qubit_allocation[id(b)] for b in op.bits] for op in node.operands]
-
-                if kind == BitType.NE:
-                    quantumNE(compute, op_qubits[0], op_qubits[1], node_qubit, fresh_scratch)
-                else:
-                    quantumLT(compute, op_qubits[0], op_qubits[1], node_qubit, fresh_scratch)
-
+    # initialize leaves - variables and constants are the only nodes not built by a gadget
+    for node in order:
+        if not node.is_leaf:
+            continue
+        if isinstance(node, Bit):
+            if node.bit_type == BitType.CONST:
+                init_const(node)
+            elif node.bit_type == BitType.VAR:
+                qubits[id(node)] = [new_variable(node)]
+                inputs[cast(str, node.name)] = qubits[id(node)]
         elif isinstance(node, UInt):
-            # check if primitive operator
-            if kind not in (UIntType.ADD,):
-                raise TypeError(f"cannot compile non-primitive bit operator {node}")
+            if node.uint_type == UIntType.CONST:
+                qubits[id(node)] = [init_const(b) for b in node.bits]
+            elif node.uint_type == UIntType.VAR:
+                bit_qs = [new_variable(b) for b in node.bits]
+                for b, q in zip(node.bits, bit_qs):
+                    qubits[id(b)] = [q]
+                qubits[id(node)] = bit_qs
+                inputs[cast(str, node.name)] = bit_qs
 
-            # all uint operations are binary so far
-            op_qubits = [[qubit_allocation[id(b)] for b in op.bits] for op in node.operands]
-            node_qubits = [qubit_allocation[id(b)] for b in node.bits]
+    # translate the operations by running each node's gadget
+    for node in order:
+        if node.is_leaf:
+            continue
+        if isinstance(node, Bit) and node.bit_type == BitType.UINT:
+            # set when the parent UInt was initialized or built
+            continue
+        if isinstance(node, UInt) and node.uint_type == UIntType.BITS:
+            # BITS uints alias the qubits of their component bits
+            qubits[id(node)] = [qubits[id(b)][0] for b in node.bits]
+            continue
 
-            if kind == UIntType.ADD:
-                sum_width = max(len(q) for q in op_qubits)
-                quantumADD(compute, op_qubits[0], op_qubits[1], node_qubits[:sum_width-1], fresh_scratch, carry_out=node_qubits[sum_width])
+        kind = node_type(node)
+        gadget = GADGETS.get((type(kind), kind))
+        if gadget is None:
+            raise TypeError(f"no gadget available to compile {node}")
+
+        out = gadget(qctx, node, *(qubits[id(op)] for op in node.operands))
+
+        out_bits: tuple[Bit, ...]
+        if isinstance(node, UInt):
+            expected_width = node.width
+            out_bits = node.bits
         else:
-            raise TypeError(f"compilation of {type(node)} nodes not supported")
+            expected_width = 1
+            out_bits = (cast(Bit, node),)
+        if len(out) != expected_width:
+            raise RuntimeError(
+                f"gadget for {kind.name} returned {len(out)} qubit(s), expected {expected_width}"
+            )
+
+        tagged = [tag(q, b) for q, b in zip(out, out_bits)]
+        qubits[id(node)] = tagged
+        if isinstance(node, UInt):
+            for b, q in zip(out_bits, tagged):
+                qubits[id(b)] = [q]
 
     # Calculate the predicate, mark its phase, then undo all scratch work.
-    predicate_qubit = qubit_allocation[id(expr)]
-    oracle_circuit = compute.copy()
-    oracle_circuit.z(predicate_qubit)
-    oracle_circuit.compose(compute.inverse(), inplace=True)
+    predicate = qubits[id(expr)][0]
+    oracle_circuit = circuit.copy()
+    oracle_circuit.z(predicate.qubit)
+    oracle_circuit.compose(circuit.inverse(), inplace=True)
+
+    def index(q: Q) -> int:
+        return circuit.find_bit(q.qubit).index
 
     return Oracle(
         circuit=oracle_circuit,
-        inputs=inputs,
-        output=[],  
-        clean_ancillas=clean_ancillas,
+        inputs={name: [index(q) for q in bit_qs] for name, bit_qs in inputs.items()},
+        output=[],
+        clean_ancillas=[index(q) for q in pool.ancillas],
         dirty_ancillas=[],
     )
 
@@ -260,8 +232,8 @@ def parse_input(node: ASTNode) -> list[ASTNode]:
         node_id = id(node)
         if node_id in visiting:
             raise ValueError("Cycle in graph Boo hoo go fix it")
-        if node_id in visited: 
-            return 
+        if node_id in visited:
+            return
 
         children = node.children
         if not isinstance(children, tuple):
