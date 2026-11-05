@@ -1,13 +1,32 @@
+from enum import IntEnum
+from typing import Callable
+
 from qiskit.circuit import QuantumCircuit
 
-def quantumAND(compute: QuantumCircuit,qubitA: int, qubitB: int, target_qubit: int) -> None:
+from ..expression import ASTNode, BitType, UIntType
+
+from ..optimize import NodeType
+from .qubit import QCtx, Q
+
+Gadget = Callable[[QCtx, ASTNode, list[list[Q]]], list[Q]]
+GADGETS: dict[tuple[type[NodeType], IntEnum], Gadget] = {}
+def gadget(*kinds: NodeType):
+    def deco(fn):
+        for k in kinds:
+            GADGETS[(type(k), k)] = fn
+        return fn
+    return deco
+
+@gadget(BitType.AND)
+def q_AND(compute: QuantumCircuit,qubitA: int, qubitB: int, target_qubit: int) -> None:
     if qubitA == qubitB:
         compute.cx(qubitA, target_qubit)
     else:
         compute.ccx(qubitA, qubitB, target_qubit)
 
 
-def quantumOR(compute: QuantumCircuit, qubitA: int, qubitB: int, target_qubit: int) -> None:
+@gadget(BitType.OR)
+def q_OR(compute: QuantumCircuit, qubitA: int, qubitB: int, target_qubit: int) -> None:
     if qubitA == qubitB:
         compute.cx(qubitA, target_qubit)
     else:
@@ -15,15 +34,18 @@ def quantumOR(compute: QuantumCircuit, qubitA: int, qubitB: int, target_qubit: i
         compute.cx(qubitB, target_qubit)
         compute.ccx(qubitA, qubitB, target_qubit)
 
-def quantumXOR(compute: QuantumCircuit, qubitA: int, qubitB: int, target_qubit: int) -> None:
+@gadget(BitType.XOR)
+def q_XOR(compute: QuantumCircuit, qubitA: int, qubitB: int, target_qubit: int) -> None:
     compute.cx(qubitA, target_qubit)
     compute.cx(qubitB, target_qubit)
 
-def quantumNOT(compute: QuantumCircuit, qubitA: int, target_qubit: int) -> None:
+@gadget(BitType.NOT)
+def q_NOT(compute: QuantumCircuit, qubitA: int, target_qubit: int) -> None:
     compute.x(target_qubit)
     compute.cx(qubitA, target_qubit)
 
-def quantumNE(compute: QuantumCircuit, left, right, target, fresh_scratch):
+@gadget(BitType.NE)
+def q_NE(compute: QuantumCircuit, left, right, target, fresh_scratch):
     if len(left) == 1:
         quantumXOR(compute, left[0], right[0], target)
         return
@@ -40,7 +62,8 @@ def quantumNE(compute: QuantumCircuit, left, right, target, fresh_scratch):
         quantumOR(compute, any_different, difference, result)
         any_different = result
 
-def quantumLT(compute: QuantumCircuit, left, right, target, fresh_scratch):
+@gadget(BitType.LT)
+def q_LT(compute: QuantumCircuit, left, right, target, fresh_scratch):
     # BUG: cooked when size of left and right mismatch
     lower_less = None
 
@@ -64,8 +87,9 @@ def quantumLT(compute: QuantumCircuit, left, right, target, fresh_scratch):
             quantumOR(compute, less_here, carry_less, result)
 
         lower_less = result
-    
-def quantumADD(compute: QuantumCircuit, a: list[int], b: list[int], out: list[int], fresh_scratch, carry_in=None, carry_out=None):
+
+@gadget(UIntType.ADD)
+def q_ADD(compute: QuantumCircuit, a: list[int], b: list[int], out: list[int], fresh_scratch, carry_in=None, carry_out=None):
     """
     construct a quantum uint addition circuit
 
