@@ -23,6 +23,7 @@ class QCtx:
     def x(self, q: Q): self.circuit.x(q.qubit)
     def cx(self, a: Q, t: Q): self.circuit.cx(a.qubit, t.qubit)
     def ccx(self, a: Q, b: Q, t: Q): self.circuit.ccx(a.qubit, b.qubit, t.qubit)
+    def mcx(self, controls: list[Q], t: Q): self.circuit.mcx([c.qubit for c in controls], t.qubit)
 
 class AncillaPool:
     """
@@ -93,10 +94,7 @@ class AncillaPool:
         scratch_qs = [self.alloc() for i in range(scratch_count)]
         output_qs = [self.alloc() for i in range(output_count)]
         
-        # pack into tuple if necessary
-        scratch_yield = scratch_qs[0] if scratch_count == 1 else tuple(scratch_qs)
-        output_yield = output_qs[0] if output_count == 1 else tuple(output_qs)
-        yield_target = (scratch_yield, output_yield) if output_count > 0 else scratch_yield
+        yield_target = (tuple(scratch_qs), tuple(output_qs))
 
         compute_end_idx = None
 

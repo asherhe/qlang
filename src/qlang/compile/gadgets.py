@@ -64,33 +64,28 @@ def q_NOT(qctx: QCtx, node: ASTNode, a: list[Q]) -> list[Q]:
     qctx.cx(qubitA, target_qubit)
     return [target_qubit]
 
-@gadget(BitType.NE)
-def q_NE(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
+@gadget(BitType.EQ)
+def q_EQ(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
     width = max(len(a), len(b))
-    differences = []
+    bitwise_eq = []
     for i in range(width):
-        diff = qctx.pool.alloc()
+        qEq = qctx.pool.alloc()
         qA = a[i] if i < len(a) else None
         qB = b[i] if i < len(b) else None
 
         if qA and qB:
-            qctx.cx(qA, diff)
-            qctx.cx(qB, diff)
+            qctx.cx(qA, qEq)
+            qctx.cx(qB, qEq)
         elif qA:
-            qctx.cx(qA, diff)
+            qctx.cx(qA, qEq)
         elif qB:
-            qctx.cx(qB, diff)
-        differences.append(diff)
+            qctx.cx(qB, qEq)
+        qctx.x(qEq)
+        bitwise_eq.append(qEq)
 
-    # OR the differences together
-    any_different = differences[0]
-    for i in range(1, len(differences)):
-        target = differences[i] if i == len(differences) - 1 else qctx.pool.alloc()
-        qctx.cx(any_different, target)
-        qctx.cx(differences[i], target)
-        qctx.ccx(any_different, differences[i], target)
-        any_different = target
-    return [any_different]
+    out_qubit = qctx.pool.alloc()
+    qctx.mcx(bitwise_eq, out_qubit)
+    return [out_qubit]
 
 @gadget(BitType.LT)
 def q_LT(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
@@ -100,14 +95,14 @@ def q_LT(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
 def q_adder(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q], carry_in: Q | None = None, carry_out: Q | None = None) -> list[Q]:
     """
     construct a quantum uint addition circuit
-    
+
     accepts two UInt operands, a and b. the shorter operand is treated as if it were padded with 0s
 
     the output is of width max(a.width, b.width) + 1, representing the sum and teh carry bit
     """
     # uses cuccaro adder, 1 ancila cubit required
     # TODO: draper adder if in-place allowed
-    
+
     # normalize to len(a) >= len(b)
     if len(a) < len(b):
         tmp = a
@@ -130,7 +125,7 @@ def q_adder(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q], carry_in: Q | Non
         qctx.cx(carry_ancilla, out[i])
         qctx.cx(carry_ancilla, a[i])
         qctx.ccx(a[i], out[i], carry_ancilla)
-        
+
     # forward sweep where b is 0
     # simplifies to a toffoli gate
     for i in range(len(b), len(a)):
@@ -143,7 +138,7 @@ def q_adder(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q], carry_in: Q | Non
     # forward sweep
     for i in range(len(a)-1, len(b)-1, -1):
         qctx.cx(carry_ancilla, a[i])
-        
+
     # forward sweep where b is 0
     # simplifies to a toffoli gate
     for i in range(len(b)-1, -1, -1):
@@ -167,7 +162,7 @@ def q_SUB(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
     neg_b = qctx.pool.allocs(width)
     # pad neg_b with ones if necessary
     for i in range(width):
-        qctx.cx(neg_b[i])
+        qctx.x(neg_b[i])
         if i < len(b):
             qctx.cx(b[i], neg_b[i])
 
