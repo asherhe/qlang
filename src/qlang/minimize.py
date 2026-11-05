@@ -88,25 +88,28 @@ def qaoa_creator(cost_operator: SparsePauliOp):
 
     return state_at, mean_cost
 
+def qaoa(
+    vars: list[Bit | UInt], 
+    constraint: Bit, 
+    objective: Callable[[dict[str, int]], float] | None = None, 
+    penalty: float = 1.0, 
+    iterations: int = 32, 
+) -> dict[str, int] | None: 
+    widths = {}
+    for var in vars: 
+        if isinstance(var, UInt): 
+            widths[var.name] = var.width
+        else: 
+            widths[var.name] = 1
+    grid = [i * 2*pi / iterations for i in range(iterations)]
 
-x = var_uint("x", width=3)
-y = var_uint("y", width=3)
-widths = {"x": 3, "y": 3}
-constraint = (x < 3) & (y > 1)
-penalty = 4.0
-def objective(a: dict[str, int]) -> float: 
-    expr = a["x"] * (a["y"] - a["x"])
-    return -expr
+    operator = constraint_to_cost_op(constraint, widths, objective, penalty)
+    state_at, mean_cost = qaoa_creator(operator)
+    best_angles = min(product(grid, repeat=2), key=mean_cost)
 
-# grid of gamma and beta values to trial
-grid = [i * pi / 16 for i in range(32)]
-
-operator = constraint_to_cost_op(constraint, widths, objective, penalty)
-state_at, mean_cost = qaoa_creator(operator)
-best_angles = min(product(grid, repeat=2), key=mean_cost)
-
-counts = state_at(*best_angles).sample_counts(1024)
-observed = [decode_state(int(bits, 2), widths) for bits in counts]
-feasible = (assignment for assignment in observed if evaluate(constraint, assignment))
-solution = min(feasible, key=objective)
-print(solution)
+    counts = state_at(*best_angles).sample_counts(1024)
+    observed = [decode_state(int(bits, 2), widths) for bits in counts]
+    feasible = (assignment for assignment in observed if evaluate(constraint, assignment))
+    if objective is None: 
+        return next(feasible, None)
+    return min(feasible, key=objective)
