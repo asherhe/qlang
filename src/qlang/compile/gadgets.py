@@ -49,8 +49,8 @@ def q_XOR(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
     return [target_qubit]
 
 @gadget(BitType.NOT)
-def q_NOT(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
-    qubitA, qubitB = a[0], b[0]
+def q_NOT(qctx: QCtx, node: ASTNode, a: list[Q]) -> list[Q]:
+    qubitA = a[0]
     target_qubit = qctx.pool.alloc()
     qctx.x(target_qubit)
     qctx.cx(qubitA, target_qubit)
