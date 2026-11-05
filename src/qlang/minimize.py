@@ -101,12 +101,9 @@ def extract_linear(expr: ASTNode) -> tuple[int | bool, dict[str, int]]:
             left_const, left_coeffs = extract_linear(left)
             right_const, right_coeffs = extract_linear(right)
             const = left_const + right_const
-            coeffs = {}
-            for key, value in left_coeffs.items(): 
-                if key not in right_coeffs: 
-                    coeffs[key] = value
-                else: 
-                    coeffs[key] = value + right_coeffs[key]
+            coeffs = left_coeffs.copy()
+            for name, coeff in right_coeffs.items(): 
+                coeffs[name] = coeffs.get(name, 0) + coeff
             return const, coeffs
         if type == UIntType.MUL: 
             left, right = expr.operands
@@ -129,12 +126,9 @@ def evaluate_linear(expr: Bit) -> tuple[int | bool, dict[str, int]]:
         left_const, left_coeffs = extract_linear(left)
         right_const, right_coeffs = extract_linear(right)
         const = left_const - right_const
-        coeffs = left_coeffs
-        for key, value in right_coeffs.items(): 
-            if key not in left_coeffs: 
-                coeffs[key] = -value
-            else: 
-                coeffs[key] -= value
+        coeffs = left_coeffs.copy()
+        for name, coeff in right_coeffs.items(): 
+            coeffs[name] = coeffs.get(name, 0) - coeff
         return const, coeffs
     return NotImplemented
 
