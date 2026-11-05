@@ -93,8 +93,9 @@ def q_NE(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
     return [any_different]
 
 @gadget(BitType.LT)
-def q_LT(qctx: QCtx, node: ASTNode, operands: list[list[Q]]) -> list[Q]:
-    return []
+def q_LT(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
+    diff_qubits = q_SUB(qctx, node, a, b)
+    return diff_qubits[-1:]
 
 def q_adder(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q], carry_in: Q | None = None, carry_out: Q | None = None) -> list[Q]:
     """
