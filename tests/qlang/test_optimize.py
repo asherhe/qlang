@@ -252,3 +252,23 @@ def test_bits_of_non_bits_uint_are_not_rerouted():
     x = var_uint("x", 2)
     node = bits_uint((x.bits[1], x.bits[0]))
     assert optimize_expr(node) is node
+
+
+def test_bits_of_const_bits_become_const_uint():
+    node = bits_uint((const_bit(1), const_bit(0), const_bit(1), const_bit(1)))
+    result = optimize_expr(node)
+    assert result.uint_type == UIntType.CONST
+    assert result.width == 4
+    assert result.const_value == 0b1101
+
+
+def test_bits_with_a_non_const_bit_stay_bits():
+    node = bits_uint((const_bit(1), var_bit("p")))
+    assert optimize_expr(node) is node
+
+
+def test_constant_shift_of_nonconstant_keeps_zero_fill_as_bits():
+    x = var_uint("x", 3)
+    result = optimize_expr(x << 1)
+    assert result.uint_type == UIntType.BITS
+    assert result.bits == (const_bit(0), x.bits[0], x.bits[1])

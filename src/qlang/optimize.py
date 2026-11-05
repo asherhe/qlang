@@ -522,6 +522,14 @@ def coll_BITS_nested(expr: UInt):
         return bits_uint(routed)
 
 
+@collapse.rule(UIntType.BITS)
+def coll_BITS_const(expr: UInt):
+    """a BITS made only of constant bits is a constant"""
+    if all(bit.bit_type == BitType.CONST for bit in expr.bits):
+        value = sum(1 << i for i, bit in enumerate(expr.bits) if bit.value)
+        return const_uint(value, expr.width)
+
+
 def optimize_expr(expr: ASTNode) -> ASTNode:
     """
     apply simplifications to minimize the complexity and gate requirements of the expression tree
