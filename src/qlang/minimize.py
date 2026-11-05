@@ -95,23 +95,19 @@ def qaoa_creator(cost_operator: SparsePauliOp):
     return state_at, mean_cost
 
 
-# grid = [i * pi / 16 for i in range(32)]
-# best_angles = min(product(grid, repeat=2), key=mean_cost)
-# print(best_angles, mean_cost(best_angles))
+x = var_uint("x", width=2)
+y = var_uint("y", width=2)
+widths = {"x": 2, "y": 2}
+constraint = x + y == 3
 
-# # prepare circuit at best angles and sample output
-# state = state_at(*best_angles)
-# state.seed(42)
-# counts = state.sample_counts(1024)
+# grid of gamma and beta values to trial
+grid = [i * pi / 16 for i in range(32)]
 
-# # reverse the order of the bits in counts, which begins in MSB from qiskit
-# cost_dict = {(0, 0): 3, (0, 1): 0, (1, 0): 1, (1, 1): 4}
-# observed = [(int(bits[-1]), int(bits[-2])) for bits in counts]
+operator = constraint_to_cost_op(constraint, widths)
+state_at, mean_cost = qaoa_creator(operator)
+best_angles = min(product(grid, repeat=2), key=mean_cost)
 
-# best_assignment = min(observed, key=cost_dict.__getitem__)
-# print(best_assignment, cost_dict[best_assignment])
-
-# a, b = var_bit("a"), var_bit("b")
-
-# clash = ~(a ^ b)
-# cost = 3 * bits_uint((clash,)) + bits_uint((a,))
+counts = state_at(*best_angles).sample_counts(1024)
+observed = [decode_state(int(bits, 2), widths) for bits in counts]
+solution = next((assignment for assignment in observed if evaluate(constraint, assignment)))
+print(solution)
