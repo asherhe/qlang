@@ -37,8 +37,17 @@ def q_AND(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
 @gadget(BitType.OR)
 def q_OR(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
     qa, qb = a[0], b[0]
+    if qa == qb:
+        if qa.one_use:
+            return [qa]
+        else:
+            qout = qctx.pool.alloc()
+            qctx.cx(qa, qout)
+            return [qout]
+
     # in-place is not reversible so we must tank the ancilla
     qout = qctx.pool.alloc()
+    
     qctx.x(qa)
     qctx.x(qb)
     qctx.ccx(qa, qb, qout)
