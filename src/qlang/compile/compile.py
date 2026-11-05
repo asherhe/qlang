@@ -7,7 +7,7 @@ from qiskit.circuit import QuantumCircuit, Qubit
 
 from ..expression import ASTNode, Bit, BitType, UInt, UIntType, node_type
 from ..optimize import optimize_expr
-from .gadgets import GADGETS
+from .gadgets import _GADGETS, get_gadget
 from .oracle import Oracle
 from .qubit import AncillaPool, Q, QCtx
 
@@ -93,11 +93,7 @@ def compile_oracle(expr: Bit) -> Oracle:
             qubits[id(node)] = [qubits[id(b)][0] for b in node.bits]
             continue
 
-        kind = node_type(node)
-        gadget = GADGETS.get((type(kind), kind))
-        if gadget is None:
-            raise TypeError(f"no gadget available to compile {node}")
-
+        gadget = get_gadget(node)
         out = gadget(qctx, node, *(qubits[id(op)] for op in node.operands))
 
         out_bits: tuple[Bit, ...]

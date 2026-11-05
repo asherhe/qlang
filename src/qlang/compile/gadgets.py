@@ -3,19 +3,27 @@ from typing import Callable
 
 from qiskit.circuit import QuantumCircuit
 
-from ..expression import ASTNode, BitType, UIntType
+from ..expression import ASTNode, BitType, UIntType, node_type
 
 from ..optimize import NodeType
 from .qubit import QCtx, Q
 
 Gadget = Callable[[QCtx, ASTNode, *tuple[list[Q], ...]], list[Q]]
-GADGETS: dict[tuple[type[NodeType], IntEnum], Gadget] = {}
+_GADGETS: dict[tuple[type[NodeType], IntEnum], Gadget] = {}
 def gadget(*kinds: NodeType):
     def deco(fn):
         for k in kinds:
-            GADGETS[(type(k), k)] = fn
+            _GADGETS[(type(k), k)] = fn
         return fn
     return deco
+
+def get_gadget(node: ASTNode) -> Gadget:
+    kind = node_type(node)
+    gadget = _GADGETS.get((type(kind), kind))
+    if gadget is None:
+        raise TypeError(f"no gadget available to compile {node}")
+    return gadget
+
 
 @gadget(BitType.AND)
 def q_AND(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
