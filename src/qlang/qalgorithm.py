@@ -13,25 +13,17 @@ from qiskit_aer import AerSimulator
 from qiskit import QuantumCircuit, ClassicalRegister, transpile
 
 import math
+import random
 
-# how many of the most frequent measurements to check for each k
-# small on purpose: only checking the top results means amplification has to
-# find the answer. checking every result would just be a classical brute force
-# more than 1 because the oracle does not know about params, so an amplified
-# solution outside the allowed values can rank first
+# most frequent measurements to check per run
+# above 1 because solutions outside params can rank first
 TOP_RESULTS = 3
 
-def _max_k(num_input_qubits: int) -> int:
-    """
-    the largest k worth trying
+# BBHT: growth rate of the limit on k
+GROWTH = 6 / 5
 
-    the best k is about (pi / 4) * sqrt(N / M) for N inputs and M solutions.
-    M = 1 gives the largest value, so no search should need much more than this
-    the + 1 covers cases where the rounded value lands on a bad k: for a | b,
-    N = 4 and M = 3, k = 1 has a 0% chance of a solution but k = 2 has 75%
-    """
-    N = 2 ** num_input_qubits
-    return math.ceil(math.pi / 4 * math.sqrt(N)) + 1
+# BBHT: total iterations allowed, as a multiple of sqrt(N)
+BUDGET = 9
 
 def _phase_oracle(
     oracle: Oracle 
@@ -161,8 +153,7 @@ def _try_k(
     # most frequent outcomes first: after amplification, solutions dominate
     ranked = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)
 
-    # stop at TOP_RESULTS: if the wrong k was used, the top results are not
-    # solutions, and search moves on to the next k
+    # only the top results, so amplification has to find the answer
     for bitstring, _ in ranked[:TOP_RESULTS]:
         bits = bitstring[::-1]
 
@@ -220,17 +211,24 @@ def search(
 
     num_input_qubits = sum(len(q) for q in oracle.inputs.values())
 
-    # the best k depends on the number of solutions, which we don't know yet.
-    # too many iterations overshoots and makes solutions unlikely, so start low
-    # and stop at the first k whose top results include a solution
-    # k starts at 1 because k = 0 is just random guessing
-    for k in range(1, _max_k(num_input_qubits) + 1):
+    root_n = math.sqrt(2 ** num_input_qubits)
+    limit = 1.0
+    used = 0
+
+    # BBHT: the number of solutions is unknown, so try random k under a growing limit
+    while used < BUDGET * root_n:
+        k = random.randint(1, math.ceil(limit))
+        used += k
+
         assignment = _try_k(oracle, pred, allowed, k)
 
         if assignment is not None:
             return assignment
 
-    # no k found a solution, so there most likely is none
+        # no search needs more than sqrt(N) iterations
+        limit = min(limit * GROWTH, root_n)
+
+    # budget used up, so there is most likely no solution
     return None
 
 # 3x+y=5
