@@ -318,3 +318,63 @@ def q_GE(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
         diff_qubits = q_adder(qctx, node, a, neg_b, carry_in=carry_one, carry_out=qout[0], fill=fill)
     return qout
 
+
+def _toggle_partial_product(qctx: QCtx, a: Q, b: Q, target: Q) -> None:
+    """XOR a & b into a clean target, accounting for constant wires.
+
+    this is its own inverse, which lets multiplication release each partial
+    product row as soon as its controlled addition has completed.  in
+    particular, do not feed shared constant wires to a CCX twice: constants
+    are physical qubits in the compiled circuit, not compile-time literals.
+    """
+    if a.is_const:
+        if not a.const_value:
+            return
+        if b.is_const:
+            if b.const_value:
+                qctx.x(target)
+        else:
+            qctx.cx(b, target)
+    elif b.is_const:
+        if b.const_value:
+            qctx.cx(a, target)
+    elif a == b:
+        # x & x == x; a CCX cannot use the same wire for both controls.
+        qctx.cx(a, target)
+    else:
+        qctx.ccx(a, b, target)
+
+
+@gadget(UIntType.MUL)
+def q_MUL(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
+    """multiply two UInts using shift-and-add partial products"""
+    # running total
+    product = qctx.pool.allocs(len(a) + len(b))
+    # partial sums at each digit, a * b[i]. allocate lazily (no allocation if const)
+    partial: list[Q] | None = None
+
+    for shift, qb in enumerate(b):
+        # constant zero bits are ignored
+        if qb.is_const and not qb.const_value:
+            continue
+
+        if partial is None:
+            partial = qctx.pool.allocs(len(a))
+        for qa, qpartial in zip(a, partial):
+            _toggle_partial_product(qctx, qa, qb, qpartial)
+
+        # ignore bits below the current shift. product accumulator is set to
+        # one-use so that it is written in-place by the adder
+        accumulator = [replace(q, one_use=True) for q in product[shift:]]
+        product[shift:] = q_adder(qctx, node, accumulator, partial)
+
+        # q_adder preserves partial, so undo the row before the next shift.
+        for qa, qpartial in zip(a, partial):
+            _toggle_partial_product(qctx, qa, qb, qpartial)
+
+    if partial is not None:
+        for qpartial in partial:
+            qctx.pool.free(qpartial)
+
+    return product
+
