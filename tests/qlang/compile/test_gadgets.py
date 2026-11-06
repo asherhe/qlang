@@ -407,6 +407,81 @@ def test_ge_const(isolated_registry):
     assert_phase_oracle(a >= const_uint(5, 3), lambda v: v["a"] >= 5, cases=CASES_TEST_GE_CONST)
 
 
+# ---- constants whose width differs from the variable they meet ----
+
+
+CASES_TEST_EQ_CONST_NARROWER = [{"a": 0}, {"a": 1}, {"a": 2}, {"a": 3}, {"a": 6}, {"a": 7}]
+
+
+def test_eq_const_narrower_than_variable(isolated_registry):
+    ASTNode.reset()
+    a = var_uint("a", 3)
+    assert_phase_oracle(a == const_uint(2, 2), lambda v: v["a"] == 2, cases=CASES_TEST_EQ_CONST_NARROWER)
+
+
+CASES_TEST_EQ_CONST_WIDER = [{"a": 0}, {"a": 1}, {"a": 2}, {"a": 3}]
+
+
+def test_eq_const_wider_than_variable(isolated_registry):
+    ASTNode.reset()
+    a = var_uint("a", 2)
+    assert_phase_oracle(a == const_uint(3, 4), lambda v: v["a"] == 3, cases=CASES_TEST_EQ_CONST_WIDER)
+
+
+CASES_TEST_ADD_CONST_NARROWER = [{"a": 0, "c": 1}, {"a": 3, "c": 4}, {"a": 7, "c": 0}, {"a": 7, "c": 7}, {"a": 2, "c": 2}]
+
+
+def test_add_const_narrower_than_variable(isolated_registry):
+    ASTNode.reset()
+    a, c = var_uint("a", 3), var_uint("c", 3)
+    assert_phase_oracle((a + const_uint(1, 1)) == c, lambda v: v["a"] + 1 == v["c"], cases=CASES_TEST_ADD_CONST_NARROWER)
+
+
+CASES_TEST_ADD_CONST_WIDER = [{"a": 0, "c": 3}, {"a": 1, "c": 4}, {"a": 3, "c": 6}, {"a": 3, "c": 5}, {"a": 2, "c": 5}]
+
+
+def test_add_const_wider_than_variable(isolated_registry):
+    ASTNode.reset()
+    a, c = var_uint("a", 2), var_uint("c", 3)
+    assert_phase_oracle((a + const_uint(3, 3)) == c, lambda v: v["a"] + 3 == v["c"], cases=CASES_TEST_ADD_CONST_WIDER)
+
+
+CASES_TEST_SUB_CONST_NARROWER = [{"a": 0, "c": 7}, {"a": 1, "c": 0}, {"a": 4, "c": 3}, {"a": 4, "c": 4}, {"a": 7, "c": 6}]
+
+
+def test_sub_const_narrower_than_variable(isolated_registry):
+    ASTNode.reset()
+    a, c = var_uint("a", 3), var_uint("c", 3)
+    assert_phase_oracle((a - const_uint(1, 1)) == c, lambda v: (v["a"] - 1) % 8 == v["c"], cases=CASES_TEST_SUB_CONST_NARROWER)
+
+
+CASES_TEST_SUB_CONST_WIDER = [{"a": 0, "c": 7}, {"a": 1, "c": 0}, {"a": 2, "c": 1}, {"a": 3, "c": 2}, {"a": 2, "c": 3}]
+
+
+def test_sub_const_wider_than_variable(isolated_registry):
+    ASTNode.reset()
+    a, c = var_uint("a", 2), var_uint("c", 3)
+    assert_phase_oracle((a - const_uint(1, 3)) == c, lambda v: (v["a"] - 1) % 8 == v["c"], cases=CASES_TEST_SUB_CONST_WIDER)
+
+
+CASES_TEST_GE_CONST_NARROWER = [{"a": 0}, {"a": 1}, {"a": 2}, {"a": 3}, {"a": 5}, {"a": 7}]
+
+
+def test_ge_const_narrower_than_variable(isolated_registry):
+    ASTNode.reset()
+    a = var_uint("a", 3)
+    assert_phase_oracle(a >= const_uint(2, 2), lambda v: v["a"] >= 2, cases=CASES_TEST_GE_CONST_NARROWER)
+
+
+CASES_TEST_GE_CONST_WIDER = [{"a": 0}, {"a": 1}, {"a": 2}, {"a": 3}]
+
+
+def test_ge_const_wider_than_variable(isolated_registry):
+    ASTNode.reset()
+    a = var_uint("a", 2)
+    assert_phase_oracle(a >= const_uint(3, 4), lambda v: v["a"] >= 3, cases=CASES_TEST_GE_CONST_WIDER)
+
+
 CASES_TEST_OPTIMIZED_LAYOUT = [{"x": 0}, {"x": 1}, {"x": 2}, {"x": 3}]
 
 
