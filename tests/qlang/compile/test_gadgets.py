@@ -9,7 +9,7 @@ from qiskit import QuantumCircuit
 from qiskit.quantum_info import Statevector
 
 from qlang.compile import Oracle
-from qlang.compile.compile import compile_oracle, parse_input
+from qlang.compile.compile import compile_circuit, compile_oracle, parse_input
 from qlang.compile.gadgets import _GADGETS
 from qlang.evaluate import evaluate
 from qlang.expression import (
@@ -106,6 +106,38 @@ def assert_phase_oracle(expr, expected_fn=None, cases=None):
         prepared.compose(oracle.circuit, inplace=True)
         np.testing.assert_allclose(Statevector.from_instruction(prepared).data, expected_superposition, atol=1e-12)
     return oracle
+
+
+def assert_uint_circuit(expr, cases):
+    """Check a forward UInt circuit without paying for an oracle-sized statevector."""
+    compiled = compile_circuit(expr)
+
+    for assignments, expected_value in cases:
+        input_basis = sum(
+            ((assignments[name] >> bit) & 1) << qubit
+            for name, register in compiled.inputs.items()
+            for bit, qubit in enumerate(register)
+        )
+        input_value = 0
+        input_offset = 0
+        for name, register in compiled.inputs.items():
+            input_value |= assignments[name] << input_offset
+            input_offset += len(register)
+        actual = Statevector.from_int(
+            input_basis, 2 ** compiled.circuit.num_qubits
+        ).evolve(compiled.circuit)
+        expected_output = np.zeros(2 ** len(compiled.outputs))
+        expected_output[expected_value] = 1
+        np.testing.assert_allclose(
+            actual.probabilities(qargs=list(compiled.outputs)), expected_output, atol=1e-12
+        )
+        expected_inputs = np.zeros(2 ** sum(map(len, compiled.inputs.values())))
+        expected_inputs[input_value] = 1
+        np.testing.assert_allclose(
+            actual.probabilities(qargs=[q for bits in compiled.inputs.values() for q in bits]),
+            expected_inputs,
+            atol=1e-12,
+        )
 
 
 def test_and(isolated_registry):
@@ -309,11 +341,33 @@ def test_rshift_const_by_variable(isolated_registry):
 CASES_TEST_MUL_VARIABLES = [{"a": 3, "b": 2, "c": 6}, {"a": 3, "b": 2, "c": 5}, {"a": 5, "b": 1, "c": 5}, {"a": 7, "b": 0, "c": 0}, {"a": 0, "b": 3, "c": 0}, {"a": 2, "b": 3, "c": 6}, {"a": 6, "b": 2, "c": 4}, {"a": 1, "b": 1, "c": 1}]
 
 
-@pytest.mark.xfail(reason="multiplication of two non-constant operands is not supported yet", raises=TypeError)
 def test_mul_variables(isolated_registry):
     ASTNode.reset()
     a, b, c = var_uint("a", 3), var_uint("b", 2), var_uint("c", 3)
     assert_phase_oracle((a * b) == c, lambda v: v["a"] * v["b"] == v["c"], cases=CASES_TEST_MUL_VARIABLES)
+
+
+def test_mul_bits_with_constant_components(isolated_registry):
+    """BITS operands can mix variable and constant wires without aliasing controls."""
+    ASTNode.reset()
+    x, y = var_uint("x", 1), var_uint("y", 1)
+    left = bits_uint((x.bits[0], const_bit(True)))
+    right = bits_uint((const_bit(True), y.bits[0]))
+    assert_uint_circuit(
+        left * right,
+        [
+            ({"x": 0, "y": 0}, 2),
+            ({"x": 1, "y": 0}, 3),
+            ({"x": 0, "y": 1}, 6),
+            ({"x": 1, "y": 1}, 9),
+        ],
+    )
+
+
+def test_mul_shared_operand(isolated_registry):
+    ASTNode.reset()
+    x = var_uint("x", 2)
+    assert_uint_circuit(x * bits_uint(x.bits), [({"x": value}, value * value) for value in range(4)])
 
 
 CASES_TEST_EQ = [{"a": 0, "b": 0}, {"a": 5, "b": 5}, {"a": 7, "b": 7}, {"a": 0, "b": 1}, {"a": 5, "b": 4}, {"a": 7, "b": 0}, {"a": 3, "b": 4}, {"a": 2, "b": 6}]
