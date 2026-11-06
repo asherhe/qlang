@@ -21,7 +21,7 @@ def test_search_returns_none_when_unsatisfied(p):
 def test_grover_algorithm_addition_condition(x, y):
     pred = x + y == 5
 
-    result = search({"x": range(8), "y": range(5)}, pred)
+    result = search({"x": range(8), "y": range(4)}, pred)
 
     assert result is not None
     assert evaluate(pred, result)
@@ -29,7 +29,7 @@ def test_grover_algorithm_addition_condition(x, y):
 def test_grover_algorithm_subtraction_condition(x, y):
     pred = x - y == 5
 
-    result = search({"x": range(8), "y": range(5)}, pred)
+    result = search({"x": range(8), "y": range(4)}, pred)
 
     assert result is not None
     assert evaluate(pred, result)
@@ -47,6 +47,6 @@ def test_grover_algorithm_no_integer_solution(x, y):
     # largest possible value is 3 * 7 + 3 = 24
     pred = 3 * x + y == 25
 
-    result = search({"x": range(8), "y": range(5)}, pred)
+    result = search({"x": range(8), "y": range(4)}, pred)
 
     assert result is None

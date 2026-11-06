@@ -242,6 +242,8 @@ def search(
     """
     # preprocessing to make sure everything is in the right types and validated
     
+    if not isinstance(params, Mapping): 
+        raise TypeError("params must be mappings")
     # a UInt condition is true when it is non-zero
     if isinstance(pred, UInt): 
         pred = pred != 0
