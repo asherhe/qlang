@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 from enum import Enum, IntEnum, auto
 from typing import Any, ClassVar, Collection, TypeVar, cast
