@@ -1,3 +1,4 @@
+from dataclasses import replace
 from enum import IntEnum
 from typing import Callable, Literal, cast
 
@@ -126,22 +127,6 @@ def q_EQ(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
             qctx.x(qeq) # just write |1>
 
     return [qeq]
-
-@gadget(BitType.GE)
-def q_GE(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
-    width = max(len(a), len(b))
-    neg_b = qctx.pool.allocs(width)
-    # pad neg_b with ones if necessary
-    for i, qb in enumerate(b):
-        qctx.x(neg_b[i])
-        if i < len(b):
-            qctx.cx(b[i], neg_b[i])
-
-    carry_1 = qctx.pool.alloc()
-    qctx.x(carry_1)
-    qout = qctx.pool.alloc()
-    diff_qubits = q_adder(qctx, node, a, neg_b, carry_in=carry_1, carry_out=qout, fill=1)
-    return [qout]
 
 
 def _maj(qctx: QCtx, a: Q, b: Q, c: Q) -> None:
@@ -287,4 +272,33 @@ def q_SUB(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
     qctx.x(carry_1)
     diff_qubits = q_adder(qctx, node, a, neg_b, carry_in=carry_1)
     return diff_qubits
+
+@gadget(BitType.GE)
+def q_GE(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
+    width = max(len(a), len(b))
+    
+    num_ancilla = 0
+    neg_b: list[Q | None] = []
+    for qb in b:
+        if qb.one_use:
+            neg_b.append(qb)
+        else:
+            num_ancilla += 1
+            neg_b.append(None)
+    fill = 1 if len(a) > len(b) else 0
+
+    with qctx.pool.scratch(num_ancilla + 1, 1) as (qscratch, qout):
+        qscratch_iter = iter(qscratch)
+        for i, qnb in enumerate(neg_b):
+            if qnb is None:
+                qnb = next(qscratch_iter)
+                qnb = replace(qnb, one_use=True)
+                neg_b[i] = qnb
+                qctx.cx(b[i], qnb)
+            qctx.x(qnb)
+
+        carry_one = qscratch[-1]
+        qctx.x(carry_one)
+        diff_qubits = q_adder(qctx, node, a, neg_b, carry_in=carry_one, carry_out=qout[0], fill=fill)
+    return qout
 
