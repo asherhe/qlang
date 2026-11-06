@@ -18,8 +18,8 @@ def compile_oracle(expr: Bit) -> Oracle:
     external output qubits, so output is empty. All workspace starts/ends at zero.
 
     this function owns the creation of every Q. only leaves (variables and constants) are
-    initialized up front; every other node is built on the fly by its gadget, and the Qs the
-    gadget returns are annotated with one_use here.
+    initialized up front; every other node is built on the fly by its gadget. a Q is marked
+    one_use only when the node being built is the last parent of its bit that has not been built yet.
     """
     if not isinstance(expr, Bit):
         raise TypeError(
@@ -31,34 +31,43 @@ def compile_oracle(expr: Bit) -> Oracle:
 
     # all ASTNodes in the expression in topological order
     order = parse_input(expr)
-    # how many operations consume each Bit's qubit, keyed by id(Bit)
-    uses = count_uses(order, expr)
+    # how many operations still have to consume each Bit's qubit, keyed by id(Bit).
+    # starts at the total use count and goes down as each parent node is built
+    remaining = count_uses(order, expr)
 
     circuit = QuantumCircuit()
-    pool = AncillaPool(circuit)
-    qctx = QCtx(circuit, pool)
+    qctx = QCtx(circuit)
 
     # id(node) -> qubits of the node. a Bit has one, a UInt has one per bit (LSB first)
     qubits: dict[int, list[Q]] = {}
     # var name -> qubits of the node
     inputs: dict[str, list[Q]] = {}
 
-    def tag(q: Q, bit: Bit) -> Q:
-        """update Q one_use metadata for a bit"""
-        return replace(q, one_use=uses.get(id(bit), 0) == 1)
+    def expr_bits(expr: ASTNode) -> tuple[Bit, ...]:
+        return expr.bits if isinstance(expr, UInt) else (cast(Bit, expr),)
+
+    def flagged(op: ASTNode) -> list[Q]:
+        """qubits of an operand, marked one_use when the parent being built is its last parent"""
+        return [
+            replace(q, one_use=not q.is_const and remaining.get(id(b), 0) == 1)
+            for q, b in zip(qubits[id(op)], expr_bits(op))
+        ]
+
+    def release(op: ASTNode) -> None:
+        """record that one parent of the operand's bits has been built"""
+        for b in expr_bits(op):
+            remaining[id(b)] -= 1
 
     def new_variable(bit: Bit) -> Q:
         raw = Qubit()
         circuit.add_bits([raw])
-        return tag(Q(raw), bit)
+        return Q(raw)
 
     def init_const(bit: Bit) -> Q:
         # CONST bits are shared by the node cache, so only ever initialize one once
+        # the Qubit represented by this is a reusable qubit that 
         if id(bit) not in qubits:
-            q = pool.alloc()
-            if bit.value:
-                qctx.x(q)
-            qubits[id(bit)] = [tag(q, bit)]
+            qubits[id(bit)] = [qctx.const_one if bit.value else qctx.const_zero]
         return qubits[id(bit)][0]
 
     # initialize leaves - variables and constants are the only nodes not built by a gadget
@@ -87,14 +96,24 @@ def compile_oracle(expr: Bit) -> Oracle:
             continue
         if isinstance(node, Bit) and node.bit_type == BitType.UINT:
             # set when the parent UInt was initialized or built
+            for op in node.operands:
+                release(op)
             continue
         if isinstance(node, UInt) and node.uint_type == UIntType.BITS:
             # BITS uints alias the qubits of their component bits
+            for op in node.operands:
+                release(op)
             qubits[id(node)] = [qubits[id(b)][0] for b in node.bits]
             continue
 
+        # flag every operand before releasing any, so a node that uses one operand twice
+        # does not mark it one_use on the first of those uses
+        operand_qs = [flagged(op) for op in node.operands]
+        for op in node.operands:
+            release(op)
+
         gadget = get_gadget(node)
-        out = gadget(qctx, node, *(qubits[id(op)] for op in node.operands))
+        out = gadget(qctx, node, *operand_qs)
 
         out_bits: tuple[Bit, ...]
         if isinstance(node, UInt):
@@ -108,10 +127,11 @@ def compile_oracle(expr: Bit) -> Oracle:
                 f"gadget for {node_type(node).name} returned {len(out)} qubit(s), expected {expected_width}"
             )
 
-        tagged = [tag(q, b) for q, b in zip(out, out_bits)]
-        qubits[id(node)] = tagged
+        # one_use is set when a parent consumes this node, so the flag here is not meaningful yet
+        built = [replace(q, one_use=False) for q in out]
+        qubits[id(node)] = built
         if isinstance(node, UInt):
-            for b, q in zip(out_bits, tagged):
+            for b, q in zip(out_bits, built):
                 qubits[id(b)] = [q]
 
     # Calculate the predicate, mark its phase, then undo all scratch work.
@@ -127,7 +147,7 @@ def compile_oracle(expr: Bit) -> Oracle:
         circuit=oracle_circuit,
         inputs={name: [index(q) for q in bit_qs] for name, bit_qs in inputs.items()},
         output=[],
-        clean_ancillas=[index(q) for q in pool.ancillas],
+        clean_ancillas=[index(q) for q in qctx.pool.ancillas],
         dirty_ancillas=[],
     )
 
