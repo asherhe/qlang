@@ -283,25 +283,28 @@ def q_ADD(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
 
 @gadget(UIntType.SUB)
 def q_SUB(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
-    # TODO: this is mega unoptimized
-    width = max(len(a), len(b))
-    neg_b = qctx.pool.allocs(width)
-    # pad neg_b with ones if necessary
-    for i in range(width):
-        qctx.x(neg_b[i])
-        if i < len(b):
-            qctx.cx(b[i], neg_b[i])
+    fill = 1 if len(a) > len(b) else 0
 
-    carry_1 = qctx.pool.alloc()
-    qctx.x(carry_1)
-    diff_qubits = q_adder(qctx, node, a, neg_b, carry_in=carry_1)
-    return diff_qubits
+    num_b, flags_b = _one_use_analysis(b)
+    qancilla_iter = iter(qctx.pool.allocs(len(b)-num_b))
+    neg_b = _negation_register(qctx, b, flags_b, qancilla_iter)
+
+    carry_one = qctx.pool.alloc()
+    qctx.x(carry_one)
+
+    qdiff = q_adder(qctx, node, a, neg_b, carry_in=carry_one, fill=fill)
+
+    # carry is always restored by cuccaro
+    qctx.x(carry_one)
+    qctx.pool.free(carry_one)
+
+    return qdiff
+
 
 @gadget(BitType.GE)
 def q_GE(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
-    width = max(len(a), len(b))
-    num_b, flags_b = _one_use_analysis(b)
     fill = 1 if len(a) > len(b) else 0
+    num_b, flags_b = _one_use_analysis(b)
     with qctx.pool.scratch(len(b)-num_b + 1, 1) as (qscratch, qout):
         qscratch_iter = iter(qscratch)
         neg_b = _negation_register(qctx, b, flags_b, qscratch_iter)
