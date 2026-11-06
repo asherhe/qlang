@@ -286,6 +286,36 @@ def test_rshift_variable(isolated_registry):
     assert_phase_oracle((a >> b) == c, lambda v: (v["a"] >> v["b"]) == v["c"], cases=CASES_TEST_RSHIFT_VARIABLE)
 
 
+CASES_TEST_LSHIFT_CONST_BY_VARIABLE = [{"b": 0, "c": 3}, {"b": 1, "c": 6}, {"b": 2, "c": 4}, {"b": 3, "c": 0}, {"b": 1, "c": 2}, {"b": 2, "c": 5}]
+
+
+@pytest.mark.xfail(reason="shifting by a variable amount is not supported yet", raises=TypeError)
+def test_lshift_const_by_variable(isolated_registry):
+    ASTNode.reset()
+    b, c = var_uint("b", 2), var_uint("c", 3)
+    assert_phase_oracle((const_uint(3, 3) << b) == c, lambda v: (3 << v["b"]) % 8 == v["c"], cases=CASES_TEST_LSHIFT_CONST_BY_VARIABLE)
+
+
+CASES_TEST_RSHIFT_CONST_BY_VARIABLE = [{"b": 0, "c": 6}, {"b": 1, "c": 3}, {"b": 2, "c": 1}, {"b": 3, "c": 0}, {"b": 1, "c": 2}, {"b": 2, "c": 2}]
+
+
+@pytest.mark.xfail(reason="shifting by a variable amount is not supported yet", raises=TypeError)
+def test_rshift_const_by_variable(isolated_registry):
+    ASTNode.reset()
+    b, c = var_uint("b", 2), var_uint("c", 3)
+    assert_phase_oracle((const_uint(6, 3) >> b) == c, lambda v: (6 >> v["b"]) == v["c"], cases=CASES_TEST_RSHIFT_CONST_BY_VARIABLE)
+
+
+CASES_TEST_MUL_VARIABLES = [{"a": 3, "b": 2, "c": 6}, {"a": 3, "b": 2, "c": 5}, {"a": 5, "b": 1, "c": 5}, {"a": 7, "b": 0, "c": 0}, {"a": 0, "b": 3, "c": 0}, {"a": 2, "b": 3, "c": 6}, {"a": 6, "b": 2, "c": 4}, {"a": 1, "b": 1, "c": 1}]
+
+
+@pytest.mark.xfail(reason="multiplication of two non-constant operands is not supported yet", raises=TypeError)
+def test_mul_variables(isolated_registry):
+    ASTNode.reset()
+    a, b, c = var_uint("a", 3), var_uint("b", 2), var_uint("c", 3)
+    assert_phase_oracle((a * b) == c, lambda v: v["a"] * v["b"] == v["c"], cases=CASES_TEST_MUL_VARIABLES)
+
+
 CASES_TEST_EQ = [{"a": 0, "b": 0}, {"a": 5, "b": 5}, {"a": 7, "b": 7}, {"a": 0, "b": 1}, {"a": 5, "b": 4}, {"a": 7, "b": 0}, {"a": 3, "b": 4}, {"a": 2, "b": 6}]
 
 
