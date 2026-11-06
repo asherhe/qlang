@@ -3,7 +3,7 @@
 from qiskit import QuantumCircuit
 
 from qlang.compile import Oracle, OutputMode, compile_oracle
-from qlang.expression import var_bit
+from qlang.expression import const_bit, var_bit
 
 
 def test_oracle_metadata_and_ancilla_count():
@@ -30,3 +30,16 @@ def test_output_modes_are_distinct():
 
 def test_compile_returns_oracle():
     assert isinstance(compile_oracle(var_bit("p")), Oracle)
+
+
+def test_compile_allocates_only_constants_the_expression_uses():
+    no_const = compile_oracle(var_bit("p"))
+    false_const = compile_oracle(const_bit(False))
+    true_const = compile_oracle(const_bit(True))
+
+    assert no_const.total_ancillas == 0
+    assert no_const.circuit.num_qubits == 1
+    assert false_const.total_ancillas == 1
+    assert false_const.circuit.num_qubits == 1
+    assert true_const.total_ancillas == 1
+    assert true_const.circuit.num_qubits == 1

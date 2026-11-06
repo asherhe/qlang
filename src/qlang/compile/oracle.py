@@ -24,6 +24,11 @@ class Oracle:
     clean_ancillas: list[int] = field(default_factory=list)
     dirty_ancillas: list[int] = field(default_factory=list)
 
+    # (symbolic operation name, first gate index, gate index after the operation)
+    # in the forward computation of circuit. Consumers may use this only for
+    # visualization; circuit remains the executable phase oracle.
+    operation_spans: list[tuple[str, int, int]] = field(default_factory=list)
+
     @property
     def total_ancillas(self) -> int:
         return len(self.clean_ancillas) + len(self.dirty_ancillas)
