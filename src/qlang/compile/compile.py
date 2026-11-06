@@ -190,7 +190,10 @@ def validate_expression(expr: Bit) -> None:
                     f"{node.bit_type.name} expects {expected} operand(s), got {len(node.operands)}"
                 )
             if node.bit_type in (BitType.VAR, BitType.UINT):
-                input_slot(node)
+                # bits of a computed UInt are valid, but they aren't inputs
+                parent = node.parent_uint
+                if not (isinstance(parent, UInt) and parent.uint_type != UIntType.VAR):
+                    input_slot(node)
                 if node.bit_type == BitType.UINT:
                     parent = cast(UInt, node.parent_uint)
                     if not isinstance(parent.bits, tuple):
