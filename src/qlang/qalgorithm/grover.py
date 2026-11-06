@@ -12,10 +12,6 @@ from qiskit import QuantumCircuit, ClassicalRegister, transpile
 import math
 import random
 
-# most frequent measurements to check per run
-# above 1 because solutions outside params can rank first
-TOP_RESULTS = 3
-
 # BBHT: growth rate of the limit on k
 GROWTH = 6 / 5
 
@@ -242,8 +238,7 @@ def _try_k(
     # most frequent outcomes first: after amplification, solutions dominate
     ranked = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)
 
-    # only the top results, so amplification has to find the answer
-    for bitstring, _ in ranked[:TOP_RESULTS]:
+    for bitstring, _ in ranked:
         bits = bitstring[::-1]
         measured_by_qubit = {}
 
