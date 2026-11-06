@@ -7,7 +7,9 @@ the expression graph, circuit, and solution heatmap.
 
 ## Get started
 
-Requires **Python 3.14+** and [uv](https://docs.astral.sh/uv/). From the repository root:
+Use Python 3.10 or newer. Run these commands from the repository root.
+
+Install the locked dependencies and the editable package.
 
 ```bash
 uv sync --frozen
