@@ -251,23 +251,41 @@ def search(
 ) -> dict[str, int] | None:
     """
     search for solutions in the space of params that satisfy pred
-
     the search domain is the cartesian product of each parameter's search space specified in params.
-
     return one solution set that satisfy the predicate
     """
-
-    allowed = {
-        name: set(values)
-        for name, values in params.items()
-    }
-
+    # preprocessing to make sure everything is in the right types and validated
+    
     # a UInt condition is true when it is non-zero
-    if isinstance(pred, UInt):
+    if isinstance(pred, UInt): 
         pred = pred != 0
+    validate_expression(pred)
+    widths = _validate_widths(pred)
+    allowed = _prepare_domains(params, widths)
+    # empty set of possible parameters for one variable
+    if any (not values for values in allowed.values()): 
+        return None
+    
+    # determinstic allowed value for every param, in the case that 
+    # the predicate is always true or always false (for inputs and return values)
+    defaults = {
+        name: min(values)
+        for name, values in allowed.items()
+    }
+    simplified = cast(Bit, optimize_expr(pred))
 
+    if simplified.bit_type == BitType.CONST: 
+        expected = cast(bool, simplified.value)
+        actual = bool(evaluate(pred, defaults))
+        if actual != expected: 
+            raise RuntimeError("optimized predicate disagrees with original predicate")
+        return defaults if expected else None
+    
     # compile_oracle only accepts decomposed logic; evaluate below keeps using pred
-    oracle = compile_oracle(cast(Bit, optimize_expr(pred)))
+    oracle = compile_oracle(simplified)
+    # if compilation removes all remaining inputs
+    if not oracle.inputs: 
+        return defaults if evaluate(pred, defaults) else None
 
     num_input_qubits = sum(len(q) for q in oracle.inputs.values())
 
