@@ -1,4 +1,4 @@
-"""Helpers for qlang_demo.ipynb, kept here so the notebook stays readable."""
+"""Helpers for examples/qlang_demo.ipynb, kept here so the notebook stays readable."""
 
 import math
 import random
@@ -9,8 +9,10 @@ from qiskit import ClassicalRegister, transpile
 from qiskit.quantum_info import Statevector
 from qiskit_aer import AerSimulator
 
-from qlang import ASTNode, compile_oracle, evaluate, uint
-from qlang.qalgorithm import BUDGET, GROWTH, _grover_circuit, _try_k
+from .compile import compile_oracle
+from .evaluate import evaluate
+from .expression import ASTNode, uint
+from .qalgorithm import BUDGET, GROWTH, _grover_circuit, _try_k
 
 # x is 3 bits (0-7) and y is 2 bits (0-3)
 PARAMS = {"x": range(8), "y": range(4)}
