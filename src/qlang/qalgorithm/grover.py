@@ -303,7 +303,7 @@ def search(
     effective = cast(Bit, optimize_expr(effective))
 
     # compile_oracle only accepts decomposed logic; evaluate below keeps using pred
-    oracle = compile_oracle(simplified)
+    oracle = compile_oracle(effective)
     # if compilation removes all remaining inputs
     if not oracle.inputs: 
         return defaults if evaluate(pred, defaults) else None
