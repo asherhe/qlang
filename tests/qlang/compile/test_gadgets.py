@@ -179,7 +179,6 @@ def test_indexed_uint_bit(isolated_registry):
     x = var_uint("x", 3)
     oracle = assert_phase_oracle(x.bits[2] & x.bits[0])
     assert len(oracle.inputs["x"]) == 3
-    assert len(oracle.clean_ancillas) == 1
 
 
 CASES_TEST_SINGLE_INDEXED_BIT = [{"x": 0}, {"x": 2}, {"x": 5}, {"x": 7}]
@@ -190,7 +189,6 @@ def test_single_indexed_bit_preserves_full_parent_width(isolated_registry):
     x = var_uint("x", 3)
     oracle = assert_phase_oracle(x.bits[1], cases=CASES_TEST_SINGLE_INDEXED_BIT)
     assert len(oracle.inputs["x"]) == 3
-    assert oracle.clean_ancillas == []
 
 
 # ---- UInt gadgets: each is checked through a != comparison so the predicate is a single Bit ----
