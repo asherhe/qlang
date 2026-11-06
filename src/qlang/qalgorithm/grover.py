@@ -324,19 +324,24 @@ def search(
 
     num_input_qubits = sum(len(q) for q in oracle.inputs.values())
     root_n = math.sqrt(2 ** num_input_qubits)
+    budget = math.ceil(BUDGET * root_n)
     limit = 1.0
     used = 0
 
     # BBHT: the number of solutions is unknown, so try random k under a growing limit
-    while used < BUDGET * root_n:
-        k = random.randint(1, math.ceil(limit))
-        used += k
+    while used < budget:
+        remaining = budget - used
+
+        choices = min(math.ceil(limit), remaining)
+        k = random.randrange(choices)
+        # k+1 makes sure 0 doesn't make zero progress
+        used += k + 1
         assignment = _try_k(oracle, pred, allowed, defaults, k)
         if assignment is not None:
             return assignment
         # no search needs more than sqrt(N) iterations
         limit = min(limit * GROWTH, root_n)
-    # budget used up, so there is most likely no solution
+    # budget used up, but this does not prove that it is impossible
     return None
 
 # 3x+y=5
