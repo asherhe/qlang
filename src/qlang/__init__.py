@@ -1,6 +1,8 @@
 from .compile import (
     OutputMode,
     Oracle,
+    CompiledCircuit,
+    compile_circuit,
     compile_oracle,
 )
 from .evaluate import evaluate
