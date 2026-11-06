@@ -78,11 +78,12 @@ def test_mark_and_release_since():
 
 def test_scratch_uncomputes_and_recycles():
     circuit = QuantumCircuit()
-    pool = AncillaPool(circuit)
-    ctx = QCtx(circuit, pool)
+    ctx = QCtx(circuit)
+    pool = ctx.pool
     mark = pool.mark()
 
-    with ctx.pool.scratch(scratch_count=1, output_count=1) as (scratch, output):
+    with ctx.pool.scratch(scratch_count=1, output_count=1) as (scratch_qs, output_qs):
+        scratch, output = scratch_qs[0], output_qs[0]
         ctx.cx(scratch, output)
         ctx.x(scratch)
         ctx.cx(scratch, output)
@@ -101,10 +102,11 @@ def test_scratch_uncomputes_and_recycles():
 
 def test_scratch_harvest_preserves_outputs():
     circuit = QuantumCircuit()
-    pool = AncillaPool(circuit)
-    ctx = QCtx(circuit, pool)
+    ctx = QCtx(circuit)
+    pool = ctx.pool
 
-    with ctx.pool.scratch(scratch_count=1, output_count=1) as (scratch, output):
+    with ctx.pool.scratch(scratch_count=1, output_count=1) as (scratch_qs, output_qs):
+        scratch, output = scratch_qs[0], output_qs[0]
         ctx.cx(scratch, output)
         ctx.pool.release_since(pool.mark())
         ctx.x(output)  # this touches the output, so it must NOT be uncomputed
@@ -114,13 +116,15 @@ def test_scratch_harvest_preserves_outputs():
 
 def test_qctx_gate_wrappers_route_through_circuit():
     circuit = QuantumCircuit()
-    pool = AncillaPool(circuit)
-    ctx = QCtx(circuit, pool)
+    ctx = QCtx(circuit)
+    pool = ctx.pool
     a, b, t = pool.allocs(3)
+    # QCtx already applied one X to const_one, so count only the gates added here
+    before = len(circuit.data)
     ctx.x(a)
     ctx.cx(a, b)
     ctx.ccx(a, b, t)
-    assert len(circuit.data) == 3
+    assert len(circuit.data) - before == 3
 
 
 def test_qubit_one_use_is_metadata_only():
