@@ -182,6 +182,7 @@ def _try_k(
     oracle: Oracle,
     pred: Bit,
     allowed: dict[str, set[int]],
+    defaults: dict[str, int],
     k: int
 ) -> dict[str, int] | None:
     """
@@ -191,15 +192,13 @@ def _try_k(
     """
     # inputs: the sum of the variables' binary width
     circuit, inputs = _grover_circuit(oracle, k=k)
-
     # add classical bits to the circuit to store the results
     measured = ClassicalRegister(len(inputs), "measured")
     circuit.add_register(measured)
-
     for index, qubit in enumerate(inputs):
         circuit.measure(qubit, measured[index])
 
-    #run the quantum simulation on a classical computer's CPU
+    # run the quantum simulation on a classical computer's CPU
     # scratch qubits just follow the inputs, so this method's cost tracks the inputs, not all 2^q states
     simulator = AerSimulator(method="matrix_product_state")
     execuble = transpile(circuit, simulator)
@@ -212,34 +211,21 @@ def _try_k(
     # only the top results, so amplification has to find the answer
     for bitstring, _ in ranked[:TOP_RESULTS]:
         bits = bitstring[::-1]
-
         measured_by_qubit = {}
 
         for position, qubit in enumerate(inputs):
             measured_by_qubit[qubit] = int(bits[position])
-
-        assignment = {}
-
+        assignment = defaults.copy()
         for name, qubits in oracle.inputs.items():
             value = 0
-
             # decode: turn bits in decimals
             for bit_index, qubit in enumerate(qubits):
                 bit = measured_by_qubit[qubit]
                 value += bit * (2 ** bit_index)
-
             assignment[name] = value
 
-        valid = True
-
-        for name, value in assignment.items():
-            if value not in allowed[name]:
-                valid = False
-                break
-
-        if not valid:
+        if any(value not in allowed[name] for name, value in assignment.items()): 
             continue
-
         if evaluate(pred, assignment):
             return assignment
 
@@ -288,7 +274,6 @@ def search(
         return defaults if evaluate(pred, defaults) else None
 
     num_input_qubits = sum(len(q) for q in oracle.inputs.values())
-
     root_n = math.sqrt(2 ** num_input_qubits)
     limit = 1.0
     used = 0
@@ -297,15 +282,11 @@ def search(
     while used < BUDGET * root_n:
         k = random.randint(1, math.ceil(limit))
         used += k
-
-        assignment = _try_k(oracle, pred, allowed, k)
-
+        assignment = _try_k(oracle, pred, allowed, defaults, k)
         if assignment is not None:
             return assignment
-
         # no search needs more than sqrt(N) iterations
         limit = min(limit * GROWTH, root_n)
-
     # budget used up, so there is most likely no solution
     return None
 
