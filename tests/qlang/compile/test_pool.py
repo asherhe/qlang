@@ -119,12 +119,29 @@ def test_qctx_gate_wrappers_route_through_circuit():
     ctx = QCtx(circuit)
     pool = ctx.pool
     a, b, t = pool.allocs(3)
-    # QCtx already applied one X to const_one, so count only the gates added here
     before = len(circuit.data)
     ctx.x(a)
     ctx.cx(a, b)
     ctx.ccx(a, b, t)
     assert len(circuit.data) - before == 3
+
+
+def test_qctx_allocates_constants_lazily():
+    circuit = QuantumCircuit()
+    ctx = QCtx(circuit)
+
+    assert circuit.num_qubits == 0
+    assert ctx.pool.ancillas == []
+
+    zero = ctx.const_zero
+    assert ctx.const_zero is zero
+    assert circuit.num_qubits == 1
+    assert len(circuit.data) == 0
+
+    one = ctx.const_one
+    assert ctx.const_one is one
+    assert circuit.num_qubits == 2
+    assert len(circuit.data) == 1
 
 
 def test_qubit_one_use_is_metadata_only():
