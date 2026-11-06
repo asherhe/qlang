@@ -14,6 +14,11 @@ class Q:
     # the same physical qubit still matches its pool entry regardless of the annotation
     one_use: bool = field(default=False, compare=False)
 
+    # whether this qubit represents a known constant at compile-time
+    is_const: bool = False
+    # constant value (0 or 1)
+    const_value: int | None = None
+
 @dataclass
 class QCtx:
     """packages the construction environment of a quantum circuit"""
