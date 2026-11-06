@@ -17,5 +17,5 @@ from .expression import (
     print_ast,
 )
 from .optimize import optimize_expr
-from .qalgorithm import search
-from .minimize import qaoa
+from .qalgorithm.grover import search
+from .qalgorithm.qaoa import qaoa

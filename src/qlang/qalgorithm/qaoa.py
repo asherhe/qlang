@@ -1,5 +1,5 @@
-from .expression import ASTNode, Bit, UInt, BitType, UIntType, node_type
-from .evaluate import evaluate
+from ..expression import ASTNode, Bit, UInt, BitType, UIntType, node_type
+from ..evaluate import evaluate
 
 from math import pi
 from itertools import product, combinations
