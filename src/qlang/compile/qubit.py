@@ -64,7 +64,11 @@ class QCtx:
         qout = []
         for q in a:
             if q.is_const:
-                qnew = self.pool.alloc()
+                # retain the source's value metadata so free_mutable_consts
+                # can reset and recycle this temporary after a gadget uses it
+                qnew = replace(
+                    self.pool.alloc(), is_const=True, const_value=q.const_value
+                )
                 qout.append(qnew)
                 if q.const_value:
                     self.x(qnew)
@@ -131,7 +135,9 @@ class AncillaPool:
     def free(self, q: Q):
         """reclaim a clean, currently allocated ancilla qubit to the pool"""
         for i, used in enumerate(self.used_qubits):
-            if used == q:
+            # Callers may attach temporary compile-time metadata to an
+            # allocated wrapper.  Pool ownership is by physical qubit.
+            if used.qubit == q.qubit:
                 self.used_qubits.pop(i)
                 # reset all other metadata on the qubit
                 self.free_qubits.append(Q(q.qubit))

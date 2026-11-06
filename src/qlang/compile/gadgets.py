@@ -358,6 +358,13 @@ def q_MUL(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
         if qb.is_const and not qb.const_value:
             continue
 
+        accumulator = [replace(q, one_use=True) for q in product[shift:]]
+
+        # consts: skip partial sum allocation and just add
+        if qb.is_const:
+            product[shift:] = q_adder(qctx, node, accumulator, a)
+            continue
+
         if partial is None:
             partial = qctx.pool.allocs(len(a))
         for qa, qpartial in zip(a, partial):
@@ -365,7 +372,6 @@ def q_MUL(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
 
         # ignore bits below the current shift. product accumulator is set to
         # one-use so that it is written in-place by the adder
-        accumulator = [replace(q, one_use=True) for q in product[shift:]]
         product[shift:] = q_adder(qctx, node, accumulator, partial)
 
         # q_adder preserves partial, so undo the row before the next shift.
