@@ -10,7 +10,7 @@ from qiskit import QuantumCircuit
 from qiskit.quantum_info import SparsePauliOp, Statevector
 
 from qlang.expression import bits_uint, const_bit, const_uint, var_uint
-from qlang.minimize import (
+from qlang.qalgorithm.qaoa import (
     constraint_to_cost_op,
     decode_state,
     evaluate_linear,
