@@ -24,16 +24,33 @@ class QCtx:
     circuit: QuantumCircuit
     pool: AncillaPool
 
-    const_zero: Q
-    const_one: Q
+    _const_zero: Q | None
+    _const_one: Q | None
 
     def __init__(self, circuit: QuantumCircuit):
         self.circuit = circuit
         self.pool = AncillaPool(circuit)
+        self._const_zero = None
+        self._const_one = None
 
-        self.const_zero = replace(self.pool.alloc(), is_const=True, const_value=0)
-        self.const_one = replace(self.pool.alloc(), is_const=True, const_value=1)
-        self.x(self.const_one)
+    @property
+    def const_zero(self) -> Q:
+        """The shared |0> constant, allocated only when a compilation needs it."""
+        if self._const_zero is None:
+            self._const_zero = replace(
+                self.pool.alloc(), is_const=True, const_value=0
+            )
+        return self._const_zero
+
+    @property
+    def const_one(self) -> Q:
+        """The shared |1> constant, allocated only when a compilation needs it."""
+        if self._const_one is None:
+            self._const_one = replace(
+                self.pool.alloc(), is_const=True, const_value=1
+            )
+            self.x(self._const_one)
+        return self._const_one
 
     def pick_one_use(self, *qubits: Q) -> Q:
         """pick a one-use qubit from the arguments. allocate a new qubit in the pool if none are one-use"""
@@ -58,7 +75,7 @@ class QCtx:
     def free_mutable_consts(self, a: list[Q]):
         """deallocate any mutable consts allocated by make_mutable_consts"""
         for q in a:
-            if q.is_const and q not in (self.const_zero, self.const_one):
+            if q.is_const and q not in (self._const_zero, self._const_one):
                 if q.const_value:
                     self.x(q)
                 self.pool.free(q)
