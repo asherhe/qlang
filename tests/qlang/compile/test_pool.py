@@ -78,11 +78,12 @@ def test_mark_and_release_since():
 
 def test_scratch_uncomputes_and_recycles():
     circuit = QuantumCircuit()
-    pool = AncillaPool(circuit)
-    ctx = QCtx(circuit, pool)
+    ctx = QCtx(circuit)
+    pool = ctx.pool
     mark = pool.mark()
 
-    with ctx.pool.scratch(scratch_count=1, output_count=1) as (scratch, output):
+    with ctx.pool.scratch(scratch_count=1, output_count=1) as (scratch_qs, output_qs):
+        scratch, output = scratch_qs[0], output_qs[0]
         ctx.cx(scratch, output)
         ctx.x(scratch)
         ctx.cx(scratch, output)
@@ -101,10 +102,11 @@ def test_scratch_uncomputes_and_recycles():
 
 def test_scratch_harvest_preserves_outputs():
     circuit = QuantumCircuit()
-    pool = AncillaPool(circuit)
-    ctx = QCtx(circuit, pool)
+    ctx = QCtx(circuit)
+    pool = ctx.pool
 
-    with ctx.pool.scratch(scratch_count=1, output_count=1) as (scratch, output):
+    with ctx.pool.scratch(scratch_count=1, output_count=1) as (scratch_qs, output_qs):
+        scratch, output = scratch_qs[0], output_qs[0]
         ctx.cx(scratch, output)
         ctx.pool.release_since(pool.mark())
         ctx.x(output)  # this touches the output, so it must NOT be uncomputed
@@ -114,16 +116,118 @@ def test_scratch_harvest_preserves_outputs():
 
 def test_qctx_gate_wrappers_route_through_circuit():
     circuit = QuantumCircuit()
-    pool = AncillaPool(circuit)
-    ctx = QCtx(circuit, pool)
+    ctx = QCtx(circuit)
+    pool = ctx.pool
     a, b, t = pool.allocs(3)
+    # QCtx already applied one X to const_one, so count only the gates added here
+    before = len(circuit.data)
     ctx.x(a)
     ctx.cx(a, b)
     ctx.ccx(a, b, t)
-    assert len(circuit.data) == 3
+    assert len(circuit.data) - before == 3
 
 
 def test_qubit_one_use_is_metadata_only():
     raw = Qubit()
     assert Q(raw, one_use=True) == Q(raw, one_use=False)
     assert hash(Q(raw, one_use=True)) == hash(Q(raw, one_use=False))
+
+def test_release_since_keeps_listed_qubits():
+    circuit = QuantumCircuit()
+    pool = AncillaPool(circuit)
+    mark = pool.mark()
+    kept, dropped = pool.alloc(), pool.alloc()
+
+    pool.release_since(mark, keep=[kept])
+
+    assert kept in pool.used_qubits
+    assert dropped not in pool.used_qubits
+    assert dropped in pool.free_qubits
+
+
+def test_release_since_ignores_qubits_allocated_before_mark():
+    circuit = QuantumCircuit()
+    pool = AncillaPool(circuit)
+    before = pool.alloc()
+    mark = pool.mark()
+    after = pool.alloc()
+
+    pool.release_since(mark)
+
+    assert before in pool.used_qubits
+    assert after in pool.free_qubits
+
+
+def test_scratch_rolls_back_on_exception():
+    circuit = QuantumCircuit()
+    ctx = QCtx(circuit)
+    pool = ctx.pool
+    used_before = len(pool.used_qubits)
+
+    with pytest.raises(RuntimeError):
+        with pool.scratch(scratch_count=1, output_count=1) as (scratch_qs, output_qs):
+            ctx.cx(scratch_qs[0], output_qs[0])
+            raise RuntimeError("boom")
+
+    # nothing allocated inside the block stays in use, output included
+    assert len(pool.used_qubits) == used_before
+    assert all(q.qubit is not output_qs[0].qubit for q in pool.used_qubits)
+    assert len(pool.free_qubits) >= 2
+
+
+def test_scratch_rejects_output_used_as_control():
+    circuit = QuantumCircuit()
+    ctx = QCtx(circuit)
+    pool = ctx.pool
+    used_before = len(pool.used_qubits)
+
+    with pytest.raises(ValueError, match="cannot control"):
+        with pool.scratch(scratch_count=1, output_count=1) as (scratch_qs, output_qs):
+            ctx.cx(output_qs[0], scratch_qs[0])
+
+    assert len(pool.used_qubits) == used_before
+
+
+def test_scratch_rejects_output_in_multi_qubit_uncontrolled_gate():
+    circuit = QuantumCircuit()
+    ctx = QCtx(circuit)
+    pool = ctx.pool
+    used_before = len(pool.used_qubits)
+
+    with pytest.raises(ValueError, match="multi-qubit uncontrolled"):
+        with pool.scratch(scratch_count=1, output_count=1) as (scratch_qs, output_qs):
+            circuit.swap(output_qs[0].qubit, scratch_qs[0].qubit)
+
+    assert len(pool.used_qubits) == used_before
+
+
+def test_scratch_allows_output_as_single_qubit_target():
+    circuit = QuantumCircuit()
+    ctx = QCtx(circuit)
+    pool = ctx.pool
+
+    with pool.scratch(scratch_count=1, output_count=1) as (scratch_qs, output_qs):
+        ctx.cx(scratch_qs[0], output_qs[0])
+        ctx.x(output_qs[0])
+
+    assert output_qs[0] in pool.used_qubits
+
+
+def test_scratch_with_zero_outputs_frees_everything():
+    circuit = QuantumCircuit()
+    ctx = QCtx(circuit)
+    pool = ctx.pool
+    used_before = len(pool.used_qubits)
+
+    with pool.scratch(scratch_count=2, output_count=0) as (scratch_qs, output_qs):
+        ctx.cx(scratch_qs[0], scratch_qs[1])
+
+    assert output_qs == []
+    assert len(pool.used_qubits) == used_before
+
+
+def test_allocs_zero_returns_empty_list():
+    circuit = QuantumCircuit()
+    pool = AncillaPool(circuit)
+    assert pool.allocs(0) == []
+    assert circuit.num_qubits == 0
