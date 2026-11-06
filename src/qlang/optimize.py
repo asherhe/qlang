@@ -477,16 +477,16 @@ def coll_MUL_pow2(expr: UInt, a: UInt, b: UInt):
             bits += (const_bit(0),) * (expr.width - len(bits))
             return bits_uint(bits)
 
-@collapse.rule(UIntType.MUL)
-def coll_MUL_const_coeff(expr: UInt, a: UInt, b: UInt):
-    """
-    decompose multiplication by constant coefficient to sum of powers of 2s
-    """
-    a, b = _sorted_uints(a, b)
-    if a.uint_type == UIntType.CONST:
-        # delegate to coll_MUL_pow2 - guarenteed to be nonzero non-power of 2 at this point
-        # we are not using bit shift directly because that messes up with the result size
-        return cast(UInt, sum(b * (1 << i) for i, bit in enumerate(a.bits) if bit.value))
+# @collapse.rule(UIntType.MUL)
+# def coll_MUL_const_coeff(expr: UInt, a: UInt, b: UInt):
+#     """
+#     decompose multiplication by constant coefficient to sum of powers of 2s
+#     """
+#     a, b = _sorted_uints(a, b)
+#     if a.uint_type == UIntType.CONST:
+#         # delegate to coll_MUL_pow2 - guarenteed to be nonzero non-power of 2 at this point
+#         # we are not using bit shift directly because that messes up with the result size
+#         return cast(UInt, sum(b * (1 << i) for i, bit in enumerate(a.bits) if bit.value))
 
 @collapse.rule(UIntType.LSHIFT)
 def coll_LSHIFT_const_fold(expr: UInt, a: UInt, b: UInt):
