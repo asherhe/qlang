@@ -87,7 +87,7 @@ def q_EQ(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
         qa = a[i] if i < len(a) else None
         qb = b[i] if i < len(b) else None
 
-        if qa is not None and qb and qa == qb:
+        if qa is not None and qb is not None and qa == qb:
             spec.append(("true", qa, qb, None))
         elif qa is not None and qa.one_use:
             spec.append(("reuse", qa, qb, qa))
@@ -120,10 +120,7 @@ def q_EQ(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
                 qctx.x(qtarget)
                 qcontrol.append(qtarget)
 
-        if qcontrol:
-            qctx.mcx(qcontrol, qeq)
-        else:
-            qeq = qctx.const_one # just write |1>
+        qctx.mcx(qcontrol, qeq)
 
     return [qeq]
 
