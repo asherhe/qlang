@@ -51,6 +51,35 @@ def _validate_widths(expr: Bit) -> dict[str, int]:
         pending.extend(node.children)
     return widths
 
+def _prepare_domains(
+    params: Mapping[str, Iterable[int]],
+    widths: dict[str, int],
+): 
+    """validate parameter domains"""
+    for name in params: 
+        if not isinstance(widths, str) or not name.strip(): 
+            raise ValueError("parameter names must be nonempty strings")
+    missing = widths.keys() - params.keys()
+    if missing: 
+        raise ValueError(f"missing parameter domains: {', '.join(sorted(missing))}")
+
+    allowed: dict[str, set[int]] = {}
+    for name, values in params.items(): 
+        try: 
+            vals = tuple(values)
+        except TypeError as exc: 
+            raise TypeError(f"domain for {name!r} must be iterable") from exc
+        width = widths.get(name)
+        for value in vals: 
+            if type(value) is not int: 
+                raise TypeError(f"domain for {name!r} must contain integers")
+            if value < 0: 
+                raise ValueError(f"domain for {name!r} cannot contain negative values")
+            if width is not None and value >= (1 << width): 
+                raise ValueError(f"value {value} does not fit {name!r}'s {width}-bit width")
+        allowed[name] = set(vals)
+    return allowed
+
 def _phase_oracle(
     oracle: Oracle 
 ) -> QuantumCircuit:
