@@ -1,12 +1,9 @@
-from .expression import ASTNode, Bit, UInt
-
 from collections.abc import Iterable, Mapping
 from typing import cast
 
-from .compile import Oracle, compile_oracle, OutputMode
-
+from .compile import Oracle, compile_oracle, OutputMode, validate_expression
+from .expression import ASTNode, Bit, UInt, BitType, UIntType
 from .evaluate import evaluate
-
 from .optimize import optimize_expr
 
 from qiskit_aer import AerSimulator
@@ -24,6 +21,35 @@ GROWTH = 6 / 5
 
 # BBHT: total iterations allowed, as a multiple of sqrt(N)
 BUDGET = 9
+
+def _validate_widths(expr: Bit) -> dict[str, int]: 
+    """collect original variables from a validated graph, alongside their widths"""
+    widths: dict[str, int] = {}
+    declarations: dict[str, ASTNode] = {}
+    visited: set[int] = set()
+    pending: list[ASTNode] = [expr]
+
+    while pending: 
+        node = pending.pop()
+        if id(node) in visited: 
+            continue
+        visited.add(id(node))
+
+        width = None
+        if isinstance(node, Bit) and node.bit_type == BitType.VAR: 
+            width = 1
+        elif isinstance(node, UInt) and node.uint_type == UIntType.VAR: 
+            width = node.width
+
+        if width is not None: 
+            name = cast(str, node.name)
+            prev = declarations.get(name)
+            if prev is not None and prev is not node: 
+                raise ValueError(f"multiple variable declarations use name {name!r}")
+            declarations[name] = node
+            widths[name] = width
+        pending.extend(node.children)
+    return widths
 
 def _phase_oracle(
     oracle: Oracle 
