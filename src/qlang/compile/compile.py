@@ -256,16 +256,17 @@ def validate_expression(expr: Bit) -> None:
             if not all(isinstance(op, UInt) for op in node.operands):
                 raise TypeError("UInt operations require UInt operands")
 
-        # Recurse so validation also reaches deeply nested operands. A valid
-        # leaf has an empty tuple, which naturally ends that branch.
+        children = node.children
+        if not isinstance(children, tuple): 
+            raise TypeError("node children must be a tuple")
         visiting.add(node_id)
-        for operand in node.operands:
-            visit(operand)
-        if isinstance(node, UInt) and node.uint_type in (UIntType.CONST, UIntType.BITS):
-            for bit in node.bits:
+        for child in children: 
+            visit(child)
+        # validate individual bits of a UInt CONST separately
+        if isinstance(node, UInt) and node.uint_type == UIntType.CONST: 
+            for bit in node.bits: 
                 visit(bit)
-        elif isinstance(node, Bit) and node.bit_type == BitType.UINT:
-            visit(cast(UInt, node.parent_uint))
+        
         visiting.remove(node_id)
         visited.add(node_id)
 
