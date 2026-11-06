@@ -145,7 +145,8 @@ def _try_k(
         circuit.measure(qubit, measured[index])
 
     #run the quantum simulation on a classical computer's CPU
-    simulator = AerSimulator()
+    # scratch qubits just follow the inputs, so this method's cost tracks the inputs, not all 2^q states
+    simulator = AerSimulator(method="matrix_product_state")
     execuble = transpile(circuit, simulator)
     result = simulator.run(execuble, shots=1024).result()
     counts = result.get_counts()
