@@ -208,6 +208,65 @@ def terms_to_op(terms: dict[int, float], num_qubits: int) -> SparsePauliOp:
         pauli_terms.append(("I" * num_qubits, 0.0))
     return SparsePauliOp.from_list(pauli_terms)
 
+def _validate_qaoa_inputs(
+    variables: list[Bit | UInt], 
+    constraint: Bit, 
+    objective: UInt | None, 
+    iterations: int,
+) -> dict[str, int]: 
+    if type(iterations) is not int or iterations < 1: 
+        raise ValueError("iterations must be a positive integer")
+    if not isinstance(constraint, Bit): 
+        raise TypeError("constraint must be a Bit expression")
+    if objective is not None and not isinstance(objective, UInt): 
+        raise TypeError("objective must be a UInt expression or None")
+
+    widths: dict[str, int] = {}
+    declared: dict[str, ASTNode] = {}
+
+    for var in variables: 
+        if isinstance(var, Bit) and var.bit_type == BitType.VAR: 
+            width = 1
+        elif isinstance(var, UInt) and var.uint_type == UIntType.VAR: 
+            width = var.width
+        else: 
+            raise TypeError("vars must contain declared Bit or UInt variables")
+
+        name = var.name
+        if not isinstance(name, str) or not name.strip(): 
+            raise ValueError("variables must have nonempty names")
+        if name in declared: 
+            raise ValueError(f"duplicate name {name!r}")
+        if type(width) is not int or width < 1: 
+            raise ValueError(f"invalid width for variable {name!r}")
+        declared[name] = var
+        widths[name] = width
+
+    pending: list[ASTNode] = [constraint]
+    if objective is not None: 
+        pending.append(objective)
+    visited: set[int] = set()
+
+    while pending: 
+        node = pending.pop()
+        if id(node) in visited: 
+            continue
+        visited.add(id(node))
+
+        is_var = (
+            isinstance(node, Bit) and node.bit_type == BitType.VAR
+        ) or (
+            isinstance(node, UInt) and node.uint_type == UIntType.VAR
+        )
+        if is_var: 
+            name = cast(str, node.name)
+            if name not in declared: 
+                raise ValueError(f"referenced variable {name!r} is missing from vars")
+            if declared[name] is not node: 
+                raise ValueError(f"conflicting declaration for variable {name!r}")
+        pending.extend(node.children)
+    return widths
+
 def qaoa(
     vars: list[Bit | UInt], 
     constraint: Bit, 
@@ -220,15 +279,7 @@ def qaoa(
     returns None if no feasible assignment was sampled. a None result does not 
     prove that no feasible assignment exists.
     """
-    if iterations <= 0: 
-        raise ValueError("iterations must be a positive integer")
-
-    widths = {}
-    for var in vars: 
-        if isinstance(var, UInt): 
-            widths[var.name] = var.width
-        else: 
-            widths[var.name] = 1
+    widths = _validate_qaoa_inputs(vars, constraint, objective, iterations)
     # evaluate if there are no variables
     if not widths: 
         return {} if evaluate(constraint, {}) else None

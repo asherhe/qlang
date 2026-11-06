@@ -112,11 +112,10 @@ be rewritten as bit wiring. General multiplication and variable-controlled shift
 have no compiler gadget, although classical evaluation supports them. Some
 constant multiplications simplify into supported expressions.
 
-Selecting bits from computed integers remains limited by compiler input
-validation. Expressions inside `BITS` wrappers must reduce to supported compiler
-operations after optimization. Validate a new construction on a small problem
-before using it in an algorithm. Classical evaluability alone does not establish
-oracle compiler support.
+Bits selected from supported computed integers, such as `(x + y).bits[0]`,
+can also be compiled. Expressions inside `BITS` wrappers must reduce to
+supported compiler operations after optimization. Classical evaluability alone
+does not establish oracle compiler support.
 
 ## Grover search
 
@@ -127,16 +126,31 @@ if solution is not None:
 ```
 
 The implementation uses local Qiskit Aer simulation, repeated Grover trials,
-and 1,024 measurement shots per trial. A returned assignment passes the original
-predicate and the post-measurement domain filter. `None` means the search budget
-ended without accepting an assignment. It does not prove infeasibility.
+and 1,024 measurement shots per trial. Domain membership is included in the
+compiled predicate. Every distinct measured outcome is checked in descending
+frequency order, and a returned assignment passes the original predicate and
+the domain checks.
 
-Use a domain for every referenced variable, keep values within its declared
-width, and avoid extra parameters. Current limitations include constant
-predicates, variables removed by simplification, incomplete domain handling, and
-consideration of only the three most frequent outcomes per trial. Domain
-restrictions are applied after measurement. The randomized iteration schedule
-also differs from the original BBHT schedule and has no stated confidence bound.
+Supply a domain for every variable referenced by the original predicate, even
+if simplification removes that variable. Domains are finite iterables consumed
+once. Values must be nonnegative Python integers; Boolean values are rejected.
+Bit domains use 0 and 1, and UInt values must fit the declared width. Missing
+domains and invalid values raise errors. Extra parameters are included in the
+returned assignment; they have no declared width but still require nonnegative
+integer values. An empty domain makes the Cartesian product empty and returns
+`None`.
+
+Constant predicates and expressions simplified to constants are handled without
+Grover trials. A true predicate returns a complete allowed assignment; a false
+predicate returns `None`. Variables removed by optimization are filled from
+their allowed domains before the original predicate is verified.
+
+The BBHT-style schedule includes zero-iteration trials. Budget accounting
+charges `k + 1` per trial, so these trials still make progress toward termination.
+For sampled searches, `None` means no feasible assignment was accepted within
+the configured budget; it does not prove infeasibility. No confidence bound is
+claimed for the configured budget. Explicit domain-membership expressions can
+produce large circuits for large restricted domains.
 
 ## QAOA with a symbolic objective
 
@@ -155,7 +169,10 @@ if solution is not None:
 This continues the same four-qubit problem. Supply a symbolic `UInt` objective.
 Omit `objective` for a feasibility-only problem. Pass every variable referenced
 by the constraint or objective in the variable list, once each. Its order defines
-the register layout used both for cost compilation and decoding.
+the register layout used both for cost compilation and decoding. Use declared
+variables rather than constants, indexed bits, or computed expressions in that
+list. Argument validation is currently incomplete, so follow these requirements
+even when invalid input is not rejected immediately.
 
 The circuit has one cost/mixer layer. `iterations` is the positive integer number
 of grid values per angle, so `iterations=16` evaluates 256 angle pairs over
@@ -213,8 +230,8 @@ retuning. The API does not currently choose a penalty automatically.
 | `evaluate.py` | Classical evaluation for a supplied assignment |
 | `optimize.py` | Expression decomposition and simplification |
 | `compile/` | Gate construction, qubit management, and clean phase oracles |
-| `qalgorithm.py` | Grover circuit construction and sampled search |
-| `minimize.py` | Cost operators, one-layer QAOA, and sampled objective minimization |
+| `qalgorithm/grover.py` | Grover circuit construction and sampled search |
+| `qalgorithm/qaoa.py` | Cost operators, one-layer QAOA, and sampled objective minimization |
 
 The public entry points above are exported through `qlang`.
 
@@ -222,7 +239,8 @@ The public entry points above are exported through `qlang`.
 
 ```bash
 uv run pytest
-uv run pytest tests/qlang/test_minimize.py
+uv run pytest tests/qlang/qalgorithm/test_qaoa.py
+uv run pytest tests/qlang/test_search_contract.py
 ```
 
 Strict xfails record known limitations. An unexpected pass means the marker needs
