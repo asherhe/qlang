@@ -10,7 +10,7 @@ from qiskit import QuantumCircuit
 from qiskit.quantum_info import SparsePauliOp, Statevector
 
 from qlang.expression import bits_uint, const_bit, const_uint, var_uint
-from qlang.minimize import (
+from qlang.qalgorithm.qaoa import (
     constraint_to_cost_op,
     decode_state,
     evaluate_linear,
@@ -116,7 +116,7 @@ def test_qaoa_accepts_constant_zero_cost(p):
 @pytest.fixture
 def sample_qaoa_counts(monkeypatch):
     """Make readout tests independent of simulator shot order and randomness."""
-    module = import_module("qlang.minimize")
+    module = import_module("qlang.qalgorithm.qaoa")
 
     def install(counts):
         sampled_at = []
@@ -305,7 +305,7 @@ def test_qaoa_linear_path_passes_squared_cost_to_ansatz(
 ):
     x, y = var_uint("x", 2), var_uint("y", 2)
     captured = sample_qaoa_counts({"0011": 1023, "1100": 1})
-    module = import_module("qlang.minimize")
+    module = import_module("qlang.qalgorithm.qaoa")
 
     def unexpected_fallback(*args, **kwargs):
         pytest.fail("A linear equality should use direct coefficient compilation")

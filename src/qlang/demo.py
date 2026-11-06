@@ -139,12 +139,15 @@ def traced_search(pred):
     allowed = {name: set(values) for name, values in PARAMS.items()}
     defaults = {name: next(iter(values)) for name, values in PARAMS.items()}
     root_n = math.sqrt(2 ** sum(len(q) for q in oracle.inputs.values()))
+    budget = math.ceil(BUDGET * root_n)
     limit, used, round_number = 1.0, 0, 0
 
-    while used < BUDGET * root_n:
+    while used < budget:
         round_number += 1
-        k = random.randint(1, math.ceil(limit))
-        used += k
+        remaining = budget - used
+        choices = min(math.ceil(limit), remaining)
+        k = random.randrange(choices)
+        used += k + 1
         result = _try_k(oracle, pred, allowed, defaults, k)
         print(f"round {round_number:2}  limit {limit:4.2f}  k = {k}  total iterations {used:2}  found: {result}")
         if result is not None:

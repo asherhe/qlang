@@ -12,10 +12,6 @@ from qiskit import QuantumCircuit, ClassicalRegister, transpile
 import math
 import random
 
-# most frequent measurements to check per run
-# above 1 because solutions outside params can rank first
-TOP_RESULTS = 3
-
 # BBHT: growth rate of the limit on k
 GROWTH = 6 / 5
 
@@ -133,23 +129,19 @@ def _phase_oracle(
     # compile_oracle marks solutions in phase itself and has no output qubit
     if not oracle.output:
         return oracle.circuit
-
     if len(oracle.output) != 1:
         raise ValueError("search needs a single yes/no output")
-    
     out, mode = oracle.output[0]
     if mode == OutputMode.PHASE:
         return oracle.circuit
     
     qc = QuantumCircuit(oracle.circuit.num_qubits)
-
     """
         branch |00⟩|−⟩ : inputs ≠ 11 → no flip → +|00⟩|−⟩
         branch |01⟩|−⟩ : inputs ≠ 11 → no flip → +|01⟩|−⟩
         branch |10⟩|−⟩ : inputs ≠ 11 → no flip → +|10⟩|−⟩
         branch |11⟩|−⟩ : inputs = 11 → flip    → −|11⟩|−⟩
     """
-
     qc.x(out)
     qc.h(out)
     qc.compose(oracle.circuit, inplace=True)
@@ -197,28 +189,23 @@ def _grover_circuit(
     oracle.inputs: identify which measured bits belong to x and which belong to y.
     """
     inputs = oracle.inputs
-
     inputs = [
         qubits
         for var_values in inputs.values()
         for qubits in var_values
     ]
-
     if not inputs:
         raise ValueError("need at least one qubit")
 
     qc = QuantumCircuit(oracle.circuit.num_qubits)
-
     # initialize with equal probability
     qc.h(inputs)
 
     phase_oracle = _phase_oracle(oracle)
     diffuser = _diffuser(qc.num_qubits, inputs)
-
     for _ in range(k):
         qc.compose(phase_oracle, inplace=True)
         qc.compose(diffuser, inplace=True)
-
     return qc, inputs
 
 def _try_k(
@@ -251,8 +238,7 @@ def _try_k(
     # most frequent outcomes first: after amplification, solutions dominate
     ranked = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)
 
-    # only the top results, so amplification has to find the answer
-    for bitstring, _ in ranked[:TOP_RESULTS]:
+    for bitstring, _ in ranked:
         bits = bitstring[::-1]
         measured_by_qubit = {}
 
@@ -317,27 +303,29 @@ def search(
     effective = cast(Bit, optimize_expr(effective))
 
     # compile_oracle only accepts decomposed logic; evaluate below keeps using pred
-    oracle = compile_oracle(simplified)
+    oracle = compile_oracle(effective)
     # if compilation removes all remaining inputs
     if not oracle.inputs: 
         return defaults if evaluate(pred, defaults) else None
 
     num_input_qubits = sum(len(q) for q in oracle.inputs.values())
     root_n = math.sqrt(2 ** num_input_qubits)
+    budget = math.ceil(BUDGET * root_n)
     limit = 1.0
     used = 0
 
     # BBHT: the number of solutions is unknown, so try random k under a growing limit
-    while used < BUDGET * root_n:
-        k = random.randint(1, math.ceil(limit))
-        used += k
+    while used < budget:
+        remaining = budget - used
+
+        choices = min(math.ceil(limit), remaining)
+        k = random.randrange(choices)
+        # k+1 makes sure 0 doesn't make zero progress
+        used += k + 1
         assignment = _try_k(oracle, pred, allowed, defaults, k)
         if assignment is not None:
             return assignment
         # no search needs more than sqrt(N) iterations
         limit = min(limit * GROWTH, root_n)
-    # budget used up, so there is most likely no solution
+    # budget used up, but this does not prove that it is impossible
     return None
-
-# 3x+y=5
-# (1,2)

@@ -4,7 +4,7 @@ import pytest
 
 from qlang.evaluate import evaluate
 
-from qlang.qalgorithm import search
+from qlang.qalgorithm.grover import search
 
 needs_mul = pytest.mark.xfail(
     strict=True, raises=TypeError, reason="compile_oracle has no MUL gadget yet"

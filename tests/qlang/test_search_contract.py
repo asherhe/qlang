@@ -11,7 +11,7 @@ from unittest.mock import Mock
 import pytest
 from qiskit import QuantumCircuit
 
-import qlang.qalgorithm as algorithm
+import qlang.qalgorithm.grover as algorithm
 from qlang.compile import Oracle
 from qlang.evaluate import evaluate
 from qlang.expression import (
