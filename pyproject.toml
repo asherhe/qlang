@@ -3,8 +3,10 @@ name = "qlang"
 version = "0.1.0"
 description = "compile expressions into quantum circuits!"
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.10"
 dependencies = [
+    "ipywidgets>=8.1",
+    "jupyterlab>=4.6.6",
     "pytest>=9.2.0",
     "qiskit-aer>=0.17",
     "qiskit-ibm-runtime>=0.40",
