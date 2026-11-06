@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Iterable
 
 from qiskit.circuit import QuantumCircuit, Qubit
@@ -19,11 +19,21 @@ class Q:
     # constant value (0 or 1)
     const_value: int | None = None
 
-@dataclass
 class QCtx:
     """packages the construction environment of a quantum circuit"""
     circuit: QuantumCircuit
     pool: AncillaPool
+
+    const_zero: Q
+    const_one: Q
+
+    def __init__(self, circuit: QuantumCircuit):
+        self.circuit = circuit
+        self.pool = AncillaPool(circuit)
+
+        self.const_zero = replace(self.pool.alloc(), is_const=True, const_value=0)
+        self.const_one = replace(self.pool.alloc(), is_const=True, const_value=1)
+        self.x(self.const_one)
 
     def pick_one_use(self, *qubits: Q) -> Q:
         """pick a one-use qubit from the arguments. allocate a new qubit in the pool if none are one-use"""

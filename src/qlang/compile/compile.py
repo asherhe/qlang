@@ -35,8 +35,7 @@ def compile_oracle(expr: Bit) -> Oracle:
     uses = count_uses(order, expr)
 
     circuit = QuantumCircuit()
-    pool = AncillaPool(circuit)
-    qctx = QCtx(circuit, pool)
+    qctx = QCtx(circuit)
 
     # id(node) -> qubits of the node. a Bit has one, a UInt has one per bit (LSB first)
     qubits: dict[int, list[Q]] = {}
@@ -45,7 +44,7 @@ def compile_oracle(expr: Bit) -> Oracle:
 
     def tag(q: Q, bit: Bit) -> Q:
         """update Q one_use metadata for a bit"""
-        return replace(q, one_use=uses.get(id(bit), 0) == 1)
+        return replace(q, one_use=not q.is_const and uses.get(id(bit), 0) == 1)
 
     def new_variable(bit: Bit) -> Q:
         raw = Qubit()
@@ -54,11 +53,9 @@ def compile_oracle(expr: Bit) -> Oracle:
 
     def init_const(bit: Bit) -> Q:
         # CONST bits are shared by the node cache, so only ever initialize one once
+        # the Qubit represented by this is a reusable qubit that 
         if id(bit) not in qubits:
-            q = pool.alloc()
-            if bit.value:
-                qctx.x(q)
-            qubits[id(bit)] = [tag(q, bit)]
+            qubits[id(bit)] = [qctx.const_one if bit.value else qctx.const_zero]
         return qubits[id(bit)][0]
 
     # initialize leaves - variables and constants are the only nodes not built by a gadget
@@ -127,7 +124,7 @@ def compile_oracle(expr: Bit) -> Oracle:
         circuit=oracle_circuit,
         inputs={name: [index(q) for q in bit_qs] for name, bit_qs in inputs.items()},
         output=[],
-        clean_ancillas=[index(q) for q in pool.ancillas],
+        clean_ancillas=[index(q) for q in qctx.pool.ancillas],
         dirty_ancillas=[],
     )
 

@@ -276,10 +276,10 @@ def _negation_register(qctx: QCtx, b: list[Q], flags: list[bool], ancilla_iter: 
 
 @gadget(UIntType.ADD)
 def q_ADD(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
-    carry_qubit = qctx.pool.alloc()
-    sum_qubits = q_adder(qctx, node, a, b, carry_out=carry_qubit)
-    sum_qubits.append(carry_qubit)
-    return sum_qubits
+    qcarry = qctx.pool.alloc()
+    qsum = q_adder(qctx, node, a, b, carry_out=qcarry)
+    qsum.append(qcarry) # add as msb
+    return qsum
 
 @gadget(UIntType.SUB)
 def q_SUB(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
