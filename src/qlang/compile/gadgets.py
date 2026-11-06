@@ -115,7 +115,7 @@ def q_EQ(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
                 qtarget = next(qtemp_iter)
                 if qa is not None:
                     qctx.cx(qa, qtarget)
-                elif qb is not None:
+                if qb is not None:
                     qctx.cx(qb, qtarget)
                 qctx.x(qtarget)
                 qcontrol.append(qtarget)
