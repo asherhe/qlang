@@ -78,7 +78,6 @@ def q_NOT(qctx: QCtx, node: ASTNode, a: list[Q]) -> list[Q]:
 @gadget(BitType.EQ)
 def q_EQ(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
     width = max(len(a), len(b))
-    qeq = []
 
     # list[ qubit use policy, qa, qb, qout ]
     spec: list[tuple[Literal["true", "reuse", "ancilla"], Q | None, Q | None, Q | None]] = []
@@ -113,18 +112,18 @@ def q_EQ(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
                 qctx.x(qout)
                 qcontrol.append(qout)
             elif kind == "ancilla":
-                qeq = next(qtemp_iter)
+                qtarget = next(qtemp_iter)
                 if qa is not None:
-                    qctx.cx(qa, qeq)
+                    qctx.cx(qa, qtarget)
                 elif qb is not None:
-                    qctx.cx(qb, qeq)
-                qctx.x(qeq)
-                qcontrol.append(qeq)
+                    qctx.cx(qb, qtarget)
+                qctx.x(qtarget)
+                qcontrol.append(qtarget)
 
         if qcontrol:
             qctx.mcx(qcontrol, qeq)
         else:
-            qctx.x(qeq) # just write |1>
+            qeq = qctx.const_one # just write |1>
 
     return [qeq]
 
