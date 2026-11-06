@@ -171,6 +171,9 @@ def q_adder(
     if width == 0:
         return []
 
+    a = qctx.make_mutable_consts(a)
+    b = qctx.make_mutable_consts(b)
+
     # determine 
     qcarry: list[Q] = []         # carry propagation qubits
     qtarget: list[Q] = []        # sum target qubits
@@ -246,7 +249,12 @@ def q_adder(
         qctx.pool.free(qc)
 
     if carry_allocated:
+        if carry_in is not None:
+            qctx.cx(carry_in, carry_0)
         qctx.pool.free(carry_0)
+
+    qctx.free_mutable_consts(a)
+    qctx.free_mutable_consts(b)
 
     return qtarget
 

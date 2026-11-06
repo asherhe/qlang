@@ -42,6 +42,27 @@ class QCtx:
                 return q
         return self.pool.alloc()
 
+    def make_mutable_consts(self, a: list[Q]) -> list[Q]:
+        """replace constant qubits with newly allocated, mutable qubits with the same value"""
+        qout = []
+        for q in a:
+            if q.is_const:
+                qnew = self.pool.alloc()
+                qout.append(qnew)
+                if q.const_value:
+                    self.x(qnew)
+            else:
+                qout.append(q)
+        return qout
+
+    def free_mutable_consts(self, a: list[Q]):
+        """deallocate any mutable consts allocated by make_mutable_consts"""
+        for q in a:
+            if q.is_const and q not in (self.const_zero, self.const_one):
+                if q.const_value:
+                    self.x(q)
+                self.pool.free(q)
+
     # gate wrappers
     def x(self, q: Q): self.circuit.x(q.qubit)
     def cx(self, a: Q, t: Q): self.circuit.cx(a.qubit, t.qubit)
