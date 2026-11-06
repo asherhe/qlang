@@ -112,13 +112,13 @@ def q_EQ(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
                 qctx.x(qout)
                 qcontrol.append(qout)
             elif kind == "ancilla":
-                qeq = next(qtemp_iter)
+                qtemp = next(qtemp_iter)
                 if qa is not None:
-                    qctx.cx(qa, qeq)
-                elif qb is not None:
-                    qctx.cx(qb, qeq)
-                qctx.x(qeq)
-                qcontrol.append(qeq)
+                    qctx.cx(qa, qtemp)
+                if qb is not None:
+                    qctx.cx(qb, qtemp)
+                qctx.x(qtemp)
+                qcontrol.append(qtemp)
 
         if qcontrol:
             qctx.mcx(qcontrol, qeq)
@@ -159,6 +159,15 @@ def q_adder(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q], carry_in: Q | Non
         tmp = a
         a = b
         b = tmp
+
+    # the sweeps below change a in place, so repeated qubits (shared const bits) need copies
+    seen: set[Q] = set()
+    a = list(a)
+    for i, qa in enumerate(a):
+        if qa in seen:
+            a[i] = qctx.pool.alloc()
+            qctx.cx(qa, a[i])
+        seen.add(qa)
 
     # TODO: use carry_in for ancilla if it is not used anywhere else
     carry_ancilla = qctx.pool.alloc()

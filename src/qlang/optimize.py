@@ -70,12 +70,25 @@ def traverse_transform(
         memo[key] = rule(rebuild(expr, operands))
     return memo[key]
 
+def coerce_width(expr: UInt, width: int) -> UInt:
+    """resize a UInt: extra high bits are dropped, and missing ones are 0"""
+    if expr.width == width:
+        return expr
+    if expr.uint_type == UIntType.CONST:
+        return const_uint(expr.const_value & ((1 << width) - 1), width)
+    return bits_uint(expr.bits[:width] + (const_bit(False),) * (width - expr.width))
+
 def run_rule_pass(expr: ASTNode, rule_pass: RulePass) -> ASTNode:
     """apply a rule pass to every node of the expression, bottom-up. the first rule that applies to a node wins"""
     def apply_pass(node: ASTNode) -> ASTNode:
         for rule in rule_pass.rules_for(node_type(node)):
             res = rule(node, *node.operands)
             if res is not None:
+                # a rewrite keeps the width of the node it replaces, so parents stay valid
+                if isinstance(node, UInt) and cast(UInt, res).width != node.width:
+                    # finish res first: traversal can't see inside the resized BITS
+                    res = traverse_transform(res, apply_pass)
+                    return coerce_width(cast(UInt, res), node.width)
                 return res
         return node
     return traverse_transform(expr, apply_pass)
@@ -457,7 +470,7 @@ def coll_MUL_pow2(expr: UInt, a: UInt, b: UInt):
             return bits_uint(bits)
 
 @collapse.rule(UIntType.MUL)
-def coll_MUL_const_fold(expr: UInt, a: UInt, b: UInt):
+def coll_MUL_const_coeff(expr: UInt, a: UInt, b: UInt):
     """
     decompose multiplication by constant coefficient to sum of powers of 2s
     """
