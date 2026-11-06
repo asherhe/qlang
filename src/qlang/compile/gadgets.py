@@ -1,6 +1,6 @@
 from dataclasses import replace
 from enum import IntEnum
-from typing import Callable, Literal, cast
+from typing import Callable, Iterator, Literal, cast
 
 from qiskit.circuit import QuantumCircuit
 
@@ -250,6 +250,30 @@ def q_adder(
 
     return qtarget
 
+def _one_use_analysis(b: list[Q]) -> tuple[int, list[bool]]:
+    """(number of one_use, one_use flags)"""
+    flags = [qb.one_use for qb in b]
+    return sum(flags), flags
+
+def _negation_register(qctx: QCtx, b: list[Q], flags: list[bool], ancilla_iter: Iterator[Q]) -> list[Q]:
+    """
+    construct register of negated qubits, using as many from the original as possible
+
+    all bits in the output register will be marked as one_use
+    """
+    neg_b: list[Q] = []
+    for i, qb in enumerate(b):
+        if flags[i]:
+            qnb = qb
+        else:
+            qnb = next(ancilla_iter)
+            qnb = replace(qnb, one_use=True)
+            qctx.cx(qb, qnb)
+        qctx.x(qnb)
+        neg_b.append(qnb)
+    return neg_b
+
+
 @gadget(UIntType.ADD)
 def q_ADD(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
     carry_qubit = qctx.pool.alloc()
@@ -276,26 +300,11 @@ def q_SUB(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
 @gadget(BitType.GE)
 def q_GE(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
     width = max(len(a), len(b))
-    
-    num_ancilla = 0
-    neg_b: list[Q | None] = []
-    for qb in b:
-        if qb.one_use:
-            neg_b.append(qb)
-        else:
-            num_ancilla += 1
-            neg_b.append(None)
+    num_b, flags_b = _one_use_analysis(b)
     fill = 1 if len(a) > len(b) else 0
-
-    with qctx.pool.scratch(num_ancilla + 1, 1) as (qscratch, qout):
+    with qctx.pool.scratch(len(b)-num_b + 1, 1) as (qscratch, qout):
         qscratch_iter = iter(qscratch)
-        for i, qnb in enumerate(neg_b):
-            if qnb is None:
-                qnb = next(qscratch_iter)
-                qnb = replace(qnb, one_use=True)
-                neg_b[i] = qnb
-                qctx.cx(b[i], qnb)
-            qctx.x(qnb)
+        neg_b = _negation_register(qctx, b, flags_b, qscratch_iter)
 
         carry_one = qscratch[-1]
         qctx.x(carry_one)
