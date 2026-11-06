@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from .expression import ASTNode, BitType, UIntType, Bit, UInt, bits_uint, const_bit, const_uint, node_type
 from collections import defaultdict
 from operator import add, attrgetter, mul

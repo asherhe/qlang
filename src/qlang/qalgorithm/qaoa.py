@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from ..expression import ASTNode, Bit, UInt, BitType, UIntType, node_type
 from ..evaluate import evaluate
 

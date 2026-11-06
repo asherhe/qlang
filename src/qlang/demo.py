@@ -1,5 +1,7 @@
 """Helpers for examples/qlang_demo.ipynb, kept here so the notebook stays readable."""
 
+from __future__ import annotations
+
 import math
 import random
 

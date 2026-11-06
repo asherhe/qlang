@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import cast
 
 from .expression import ASTNode, Bit, BitType, UInt, UIntType, node_type
