@@ -12,7 +12,7 @@ from qiskit_aer import AerSimulator
 from .compile import compile_oracle
 from .evaluate import evaluate
 from .expression import ASTNode, uint
-from .qalgorithm import BUDGET, GROWTH, _grover_circuit, _try_k
+from .qalgorithm.grover import BUDGET, GROWTH, _grover_circuit, _try_k
 
 # x is 3 bits (0-7) and y is 2 bits (0-3)
 PARAMS = {"x": range(8), "y": range(4)}
@@ -121,6 +121,7 @@ def traced_search(pred):
     """The same BBHT loop as qlang.search, printing each round."""
     oracle = compile_oracle(pred)
     allowed = {name: set(values) for name, values in PARAMS.items()}
+    defaults = {name: next(iter(values)) for name, values in PARAMS.items()}
     root_n = math.sqrt(2 ** sum(len(q) for q in oracle.inputs.values()))
     limit, used, round_number = 1.0, 0, 0
 
@@ -128,7 +129,7 @@ def traced_search(pred):
         round_number += 1
         k = random.randint(1, math.ceil(limit))
         used += k
-        result = _try_k(oracle, pred, allowed, k)
+        result = _try_k(oracle, pred, allowed, defaults, k)
         print(f"round {round_number:2}  limit {limit:4.2f}  k = {k}  total iterations {used:2}  found: {result}")
         if result is not None:
             return result
