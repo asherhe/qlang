@@ -18,3 +18,4 @@ from .expression import (
 )
 from .optimize import optimize_expr
 from .qalgorithm import search
+from .minimize import qaoa

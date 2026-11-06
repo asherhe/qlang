@@ -455,21 +455,19 @@ class UInt(ASTNode):
         elif self.uint_type == UIntType.VAR:
             text = f" {self.name}"
         elif self.uint_type == UIntType.BITS:
-            chars = "abcdefghijklmnopqrstuvwxyz"
-            # id(bit) -> index
+            # labels are s0, s1, ...
+            tokens = []
             sources: dict[int, int] = {}
             for bit in self.bits:
-                if bit.bit_type == BitType.CONST:
-                    text += "1" if bit.value else "0"
-                else:
-                    bit_id = id(bit)
-                    if bit.bit_type == BitType.UINT:
-                        bit_id = id(bit.parent_uint)
-
-                    if bit_id not in sources:
-                        sources[bit_id] = len(sources)
-                    text += chars[sources[bit_id]]
-            text = f" {text[::-1]}"
+                if bit.bit_type == BitType.CONST: 
+                    tokens.append("1" if bit.value else "0")
+                else: 
+                    source = bit.parent_uint if bit.bit_type == BitType.UINT else bit
+                    source_id = id(source)
+                    if source_id not in sources: 
+                        sources[source_id] = len(sources)
+                    tokens.append(f"s{sources[source_id]}")
+            text = " " + " ".join(reversed(tokens))
             
         else:
             UINT_OPS = {

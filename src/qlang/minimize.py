@@ -215,12 +215,23 @@ def qaoa(
     penalty: float = 1.0, 
     iterations: int = 32, 
 ) -> dict[str, int] | None: 
+    """
+    returns lowest-objective feasible assignment observed in sample outcomes.
+    returns None if no feasible assignment was sampled. a None result does not 
+    prove that no feasible assignment exists.
+    """
+    if iterations <= 0: 
+        raise ValueError("iterations must be a positive integer")
+
     widths = {}
     for var in vars: 
         if isinstance(var, UInt): 
             widths[var.name] = var.width
         else: 
             widths[var.name] = 1
+    # evaluate if there are no variables
+    if not widths: 
+        return {} if evaluate(constraint, {}) else None
     grid = [i * 2*pi / iterations for i in range(iterations)]
 
     # NOTE: if constraint is linear, the program also expects a linear objective

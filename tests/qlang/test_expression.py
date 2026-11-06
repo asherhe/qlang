@@ -120,11 +120,14 @@ def test_new_enum_members_are_distinct_from_existing_ones():
 def test_var_uint_creates_one_uint_bit_per_position():
     node = var_uint("x", 4)
     assert len(node.bits) == 4
+    assert node.is_leaf
     for i, bit in enumerate(node.bits):
         assert bit.bit_type == BitType.UINT
         assert bit.index == i
         assert bit.parent_uint is node
-        assert bit.is_leaf
+        assert not bit.is_leaf
+        assert len(bit.children) == 1
+        assert bit.children[0] is node
 
 
 def test_uint_bits_are_shared_nodes():
@@ -163,7 +166,9 @@ def test_bits_uint_builds_bits_node():
     assert node.uint_type == UIntType.BITS
     assert node.width == 3
     assert node.bits == bits
-    assert node.is_leaf
+    assert not node.is_leaf
+    assert len(node.children) == len(bits)
+    assert all(child is bit for child, bit in zip(node.children, bits))
 
 
 def test_bits_uint_accepts_bits_owned_by_other_uints():
