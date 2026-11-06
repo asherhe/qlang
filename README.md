@@ -7,7 +7,7 @@ feasible assignments using a local statevector simulator.
 
 ## Quickstart
 
-Use Python 3.14 or newer. Run these commands from the repository root.
+Use Python 3.10 or newer. Run these commands from the repository root.
 
 Install the locked dependencies and the editable package.
 
