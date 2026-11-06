@@ -4,6 +4,7 @@ import math
 import random
 
 import matplotlib.pyplot as plt
+import numpy as np
 from matplotlib.patches import Rectangle
 from qiskit import ClassicalRegister, transpile
 from qiskit.quantum_info import Statevector
@@ -37,26 +38,41 @@ def find_solutions(pred):
     return [assignment for assignment in INPUTS if evaluate(pred, assignment)]
 
 
-def print_truth_table(pred):
-    """Run every input through the oracle and compare it with the classical answer."""
-    oracle = compile_oracle(pred)
-    matches = 0
+def oracle_phase_rows(pred, assignments, *, oracle=None):
+    """Verify phase signs and zero workspace; reuse a compiled oracle if supplied.
 
-    print(" x  y  classical  oracle sign")
-    for assignment in INPUTS:
+    Each row contains (assignment, classical_answer, phase_sign). Comparing the
+    entire state also catches changed inputs or leftover workspace, rather than
+    checking only one amplitude and overlooking garbage on other basis states.
+    """
+    if oracle is None:
+        oracle = compile_oracle(pred)
+    rows = []
+    for assignment in assignments:
         basis = sum(
             ((assignment[name] >> bit) & 1) << qubit
             for name, qubits in oracle.inputs.items()
             for bit, qubit in enumerate(qubits)
         )
         state = Statevector.from_int(basis, 2 ** oracle.circuit.num_qubits).evolve(oracle.circuit)
-        sign = round(state.data[basis].real)
         expected = bool(evaluate(pred, assignment))
-        matches += (sign == -1) == expected
+        sign = -1 if expected else 1
+        target = np.zeros_like(state.data)
+        target[basis] = sign
+        if not np.allclose(state.data, target, atol=1e-8, rtol=0):
+            raise ValueError(f"Incorrect oracle phase, changed input, or uncleared workspace for {assignment}")
+        rows.append((dict(assignment), expected, sign))
+    return rows
+
+
+def print_truth_table(pred):
+    """Check all demo inputs, printing only satisfying assignments."""
+    rows = oracle_phase_rows(pred, INPUTS)
+    print(" x  y  classical  oracle sign")
+    for assignment, expected, sign in rows:
         if expected:
             print(f"{assignment['x']:2} {assignment['y']:2}  {str(expected):9}  {sign:+d}")
-
-    print(f"\n{matches} of {len(INPUTS)} inputs match (only solutions are listed)")
+    print(f"\n{len(rows)} of {len(rows)} inputs match (only solutions are listed); workspace returns to zero")
 
 
 def _measure(oracle, k):
