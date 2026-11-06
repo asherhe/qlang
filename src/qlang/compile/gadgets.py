@@ -132,7 +132,7 @@ def q_GE(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
     width = max(len(a), len(b))
     neg_b = qctx.pool.allocs(width)
     # pad neg_b with ones if necessary
-    for i in range(width):
+    for i, qb in enumerate(b):
         qctx.x(neg_b[i])
         if i < len(b):
             qctx.cx(b[i], neg_b[i])
@@ -140,54 +140,130 @@ def q_GE(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
     carry_1 = qctx.pool.alloc()
     qctx.x(carry_1)
     qout = qctx.pool.alloc()
-    diff_qubits = q_adder(qctx, node, a, neg_b, carry_in=carry_1, carry_out=qout)
+    diff_qubits = q_adder(qctx, node, a, neg_b, carry_in=carry_1, carry_out=qout, fill=1)
     return [qout]
 
-def q_adder(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q], carry_in: Q | None = None, carry_out: Q | None = None) -> list[Q]:
+
+def _maj(qctx: QCtx, a: Q, b: Q, c: Q) -> None:
+    qctx.cx(a, b)
+    qctx.cx(a, c)
+    qctx.ccx(c, b, a)
+
+def _uma(qctx: QCtx, a: Q, b: Q, c: Q) -> None:
+    qctx.ccx(c, b, a)
+    qctx.cx(a, c)
+    qctx.cx(c, b)
+
+def q_adder(
+    qctx: QCtx,
+    node: ASTNode,
+    a: list[Q],
+    b: list[Q],
+    out: list[Q] | None = None,
+    carry_in: Q | None = None,
+    carry_out: Q | None = None,
+    fill: int = 0,
+) -> list[Q]:
     """
     construct a quantum uint addition circuit
 
     accepts two UInt operands, a and b. the shorter operand is treated as if it were padded with 0s
 
     the output is of width max(a.width, b.width). the final carry is copied into carry_out if given
+
+    fill dictates the value the MSB of the smaller operand when it is extended
     """
-    # uses cuccaro adder, 1 ancila cubit required
-    # TODO: draper adder if in-place allowed
+    # uses cuccaro adder, 1 ancila qubit required
+
+    if fill not in (0, 1):
+        raise ValueError("fill must be 0 or 1")
 
     # normalize to len(a) >= len(b)
     if len(a) < len(b):
-        tmp = a
-        a = b
-        b = tmp
+        a, b = b, a
 
-    # TODO: use carry_in for ancilla if it is not used anywhere else
-    carry_ancilla = qctx.pool.alloc()
-    # copy carry_in state
-    if carry_in is not None:
-        qctx.cx(carry_in, carry_ancilla)
+    width = len(a)
+    if width == 0:
+        return []
 
-    # output ancillas hold b, zero-padded up to the width of a: the ancillas above len(b) start at 0
-    out = qctx.pool.allocs(len(a))
-    for i in range(len(b)):
-        qctx.cx(b[i], out[i])
+    # determine 
+    qcarry: list[Q] = []         # carry propagation qubits
+    qtarget: list[Q] = []        # sum target qubits
+    carry_ancillas: list[Q] = [] # ancillas allocated for garry prop
+    for i in range(width):
+        qa = a[i]
+        qb = b[i] if i < len(b) else None
+        # both operands exist
+        if qb is not None:
+            if qa.one_use:
+                carry_i, target_i = qb, qa
+            elif qb.one_use:
+                carry_i, target_i = qa, qb
+            else:
+                # neither is one_use, copy qb into ancilla target
+                carry_i = qa
+                target_i = qctx.pool.alloc()
+                qctx.cx(qb, target_i)
+        else:
+            if qa.one_use:
+                carry_i = qctx.pool.alloc()
+                target_i = qa
+                if fill:
+                    qctx.x(carry_i)
+                carry_ancillas.append(carry_i)
+            else:
+                carry_i = qa
+                target_i = qctx.pool.alloc()
+                if fill:
+                    qctx.x(target_i)
+        qcarry.append(carry_i)
+        qtarget.append(target_i)
 
-    # forward sweep (MAJ): out[i] = b[i]^c[i], a[i] = a[i]^c[i], and the carry becomes c[i+1]
-    for i in range(len(a)):
-        qctx.cx(carry_ancilla, out[i])
-        qctx.cx(carry_ancilla, a[i])
-        qctx.ccx(a[i], out[i], carry_ancilla)
+    # carry_ancilla is always reset to its original value so we don't need to check for one_use
+    if carry_in is not None and carry_in not in [*a, *b, *(out if out else ()), carry_out]:
+        carry_0 = carry_in
+        carry_allocated = False
+    else:
+        carry_0 = qctx.pool.alloc()
+        carry_allocated = True
+        if carry_in is not None:
+            qctx.cx(carry_in, carry_0)
+
+    # forward MAJ sweep
+    for i in range(width):
+        c = carry_0 if i == 0 else qcarry[i - 1]
+
+        if i >= len(b) and fill == 0 and a[i].one_use:
+            # qcarry[i] is |0>
+            # MAJ(0, t, c) simplifies to CCX
+            qctx.ccx(c, qtarget[i], qcarry[i])
+        else:
+            _maj(qctx, qcarry[i], qtarget[i], c)
 
     # copy carry_out state
     if carry_out is not None:
-        qctx.cx(carry_ancilla, carry_out)
+        qctx.cx(qcarry[-1], carry_out)
 
-    # backward sweep (UMA): restore the carry to c[i] and a[i], and turn out[i] into the sum bit
-    for i in range(len(a)-1, -1, -1):
-        qctx.ccx(a[i], out[i], carry_ancilla)
-        qctx.cx(carry_ancilla, a[i])
-        qctx.cx(a[i], out[i])
+    # reverse UMA sweep
+    for i in range(width-1, -1, -1):
+        c = carry_0 if i == 0 else qcarry[i - 1]
 
-    return out
+        if i >= len(b) and fill == 0 and a[i].one_use:
+            qctx.ccx(c, qtarget[i], qcarry[i])
+            qctx.cx(qcarry[i], c)
+            qctx.cx(c, qtarget[i])
+        else:
+            _uma(qctx, qcarry[i], qtarget[i], c)
+    
+    for qc in reversed(carry_ancillas):
+        if fill:
+            qctx.x(qc)
+        qctx.pool.free(qc)
+
+    if carry_allocated:
+        qctx.pool.free(carry_0)
+
+    return qtarget
 
 @gadget(UIntType.ADD)
 def q_ADD(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:

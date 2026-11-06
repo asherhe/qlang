@@ -1,8 +1,8 @@
 from qlang import *
 
-x = uint("x", 3)
-y = uint("y", 3)
-expr = x == y
+x = uint("x", 2)
+y = uint("y", 2)
+expr = x + y == 6
 
 o = compile_oracle(expr)
 print(o.circuit.draw())
