@@ -133,23 +133,19 @@ def _phase_oracle(
     # compile_oracle marks solutions in phase itself and has no output qubit
     if not oracle.output:
         return oracle.circuit
-
     if len(oracle.output) != 1:
         raise ValueError("search needs a single yes/no output")
-    
     out, mode = oracle.output[0]
     if mode == OutputMode.PHASE:
         return oracle.circuit
     
     qc = QuantumCircuit(oracle.circuit.num_qubits)
-
     """
         branch |00⟩|−⟩ : inputs ≠ 11 → no flip → +|00⟩|−⟩
         branch |01⟩|−⟩ : inputs ≠ 11 → no flip → +|01⟩|−⟩
         branch |10⟩|−⟩ : inputs ≠ 11 → no flip → +|10⟩|−⟩
         branch |11⟩|−⟩ : inputs = 11 → flip    → −|11⟩|−⟩
     """
-
     qc.x(out)
     qc.h(out)
     qc.compose(oracle.circuit, inplace=True)
@@ -197,28 +193,23 @@ def _grover_circuit(
     oracle.inputs: identify which measured bits belong to x and which belong to y.
     """
     inputs = oracle.inputs
-
     inputs = [
         qubits
         for var_values in inputs.values()
         for qubits in var_values
     ]
-
     if not inputs:
         raise ValueError("need at least one qubit")
 
     qc = QuantumCircuit(oracle.circuit.num_qubits)
-
     # initialize with equal probability
     qc.h(inputs)
 
     phase_oracle = _phase_oracle(oracle)
     diffuser = _diffuser(qc.num_qubits, inputs)
-
     for _ in range(k):
         qc.compose(phase_oracle, inplace=True)
         qc.compose(diffuser, inplace=True)
-
     return qc, inputs
 
 def _try_k(
@@ -343,6 +334,3 @@ def search(
         limit = min(limit * GROWTH, root_n)
     # budget used up, but this does not prove that it is impossible
     return None
-
-# 3x+y=5
-# (1,2)
