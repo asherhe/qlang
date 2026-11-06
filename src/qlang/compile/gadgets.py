@@ -318,3 +318,123 @@ def q_GE(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
         diff_qubits = q_adder(qctx, node, a, neg_b, carry_in=carry_one, carry_out=qout[0], fill=fill)
     return qout
 
+
+def _toggle_partial_product(qctx: QCtx, a: Q, b: Q, target: Q) -> None:
+    """XOR a & b into a clean target, accounting for constant wires.
+
+    this is its own inverse, which lets multiplication release each partial
+    product row as soon as its controlled addition has completed.  in
+    particular, do not feed shared constant wires to a CCX twice: constants
+    are physical qubits in the compiled circuit, not compile-time literals.
+    """
+    if a.is_const:
+        if not a.const_value:
+            return
+        if b.is_const:
+            if b.const_value:
+                qctx.x(target)
+        else:
+            qctx.cx(b, target)
+    elif b.is_const:
+        if b.const_value:
+            qctx.cx(a, target)
+    elif a == b:
+        # x & x == x; a CCX cannot use the same wire for both controls.
+        qctx.cx(a, target)
+    else:
+        qctx.ccx(a, b, target)
+
+
+def _mul_orientation_cost(a: list[Q], b: list[Q]) -> tuple[int, int]:
+    """estimate (temporary_qubits, primitive_gates) for an a * b gadget.
+
+    the multiplier is b. the estimate mirrors the logic of q_MUL to reproduce
+    all its optimizations. the product register
+    and input registers have the same size in either orientation, so only
+    temporary workspace is compared
+    """
+    width_a, width_b = len(a), len(b)
+    const_zero_a = sum(q.is_const and not q.const_value for q in a)
+    const_one_a = sum(q.is_const and bool(q.const_value) for q in a)
+    const_a = const_zero_a + const_one_a
+
+    peak_workspace = 0
+    gates = 0
+    partial_live = False
+
+    for shift, qb in enumerate(b):
+        if qb.is_const and not qb.const_value:
+            continue
+
+        # accumulator has width width_a + width_b - shift
+        # low width_a positions use the full MAJ/UMA pair (6 gates)
+        # upper positions use zero-extension shortcut (4 gates)
+        adder_width = width_a + width_b - shift
+        gates += 4 * adder_width + 2 * width_a
+        carry_workspace = width_b - shift + 1
+
+        if qb.is_const:
+            # direct adds needs mutable copies of constant bits in a
+            # ones cost an X to prepare and an X to reset
+            # zeroes cost no gates
+            gates += 2 * const_one_a
+            peak_workspace = max(
+                peak_workspace,
+                (width_a if partial_live else 0) + carry_workspace + const_a,
+            )
+        else:
+            partial_live = True
+            # compute and uncompute a & qb.
+            # constant-0 bits produce no gates
+            # all others have two CX/CCX gates
+            gates += 2 * (width_a - const_zero_a)
+            peak_workspace = max(
+                peak_workspace, width_a + carry_workspace
+            )
+
+    return peak_workspace, gates
+
+
+@gadget(UIntType.MUL)
+def q_MUL(qctx: QCtx, node: ASTNode, a: list[Q], b: list[Q]) -> list[Q]:
+    """multiply two UInts using shift-and-add partial products"""
+    # favor cheaper operand order
+    if _mul_orientation_cost(b, a) < _mul_orientation_cost(a, b):
+        a, b = b, a
+
+    # running total
+    product = qctx.pool.allocs(len(a) + len(b))
+    # partial sums at each digit, a * b[i]. allocate lazily (no allocation if const)
+    partial: list[Q] | None = None
+
+    for shift, qb in enumerate(b):
+        # constant zero bits are ignored
+        if qb.is_const and not qb.const_value:
+            continue
+
+        accumulator = [replace(q, one_use=True) for q in product[shift:]]
+
+        # consts: skip partial sum allocation and just add
+        if qb.is_const:
+            product[shift:] = q_adder(qctx, node, accumulator, a)
+            continue
+
+        if partial is None:
+            partial = qctx.pool.allocs(len(a))
+        for qa, qpartial in zip(a, partial):
+            _toggle_partial_product(qctx, qa, qb, qpartial)
+
+        # ignore bits below the current shift. product accumulator is set to
+        # one-use so that it is written in-place by the adder
+        product[shift:] = q_adder(qctx, node, accumulator, partial)
+
+        # q_adder preserves partial, so undo the row before the next shift.
+        for qa, qpartial in zip(a, partial):
+            _toggle_partial_product(qctx, qa, qb, qpartial)
+
+    if partial is not None:
+        for qpartial in partial:
+            qctx.pool.free(qpartial)
+
+    return product
+

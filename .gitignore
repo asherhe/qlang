@@ -1,3 +1,5 @@
+.jupyter-runtime
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -221,3 +223,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Generated oracle presentation assets
+examples/oracle_exports/

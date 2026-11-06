@@ -1,3 +1,3 @@
 from .oracle import Oracle, OutputMode
-from .compile import compile_oracle, validate_expression
+from .compile import CompiledCircuit, compile_circuit, compile_oracle, validate_expression
 
