@@ -57,7 +57,7 @@ def _prepare_domains(
 ): 
     """validate parameter domains"""
     for name in params: 
-        if not isinstance(widths, str) or not name.strip(): 
+        if not isinstance(name, str) or not name.strip(): 
             raise ValueError("parameter names must be nonempty strings")
     missing = widths.keys() - params.keys()
     if missing: 
