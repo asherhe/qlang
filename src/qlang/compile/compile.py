@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from typing import cast
 
 from qiskit.circuit import QuantumCircuit, Qubit
@@ -11,23 +11,26 @@ from .gadgets import get_gadget
 from .oracle import Oracle
 from .qubit import AncillaPool, Q, QCtx
 
-def compile_oracle(expr: Bit) -> Oracle:
-    """Compile decomposed Boolean logic into a clean phase oracle.
+@dataclass(frozen=True, slots=True)
+class CompiledCircuit:
+    """forward reversible computation and its qubit layout
 
-    Inputs and their bit positions are recorded in inputs. Phase mode has no
-    external output qubits, so output is empty. All workspace starts/ends at zero.
-
-    this function owns the creation of every Q. only leaves (variables and constants) are
-    initialized up front; every other node is built on the fly by its gadget. a Q is marked
-    one_use only when the node being built is the last parent of its bit that has not been built yet.
+    clean_ancillas start in |0>, but may contain intermediate values after the circuit runs. if they must be restored, apply the inverse circuit
     """
-    if not isinstance(expr, Bit):
-        raise TypeError(
-            "compile_oracle expects a Bit expression; decompose UInt expressions first"
-        )
+
+    circuit: QuantumCircuit
+    inputs: dict[str, tuple[int, ...]]
+    outputs: tuple[int, ...]
+    clean_ancillas: tuple[int, ...]
+    dirty_ancillas: tuple[int, ...]
+    operation_spans: tuple[tuple[str, int, int], ...] = ()
+
+
+def compile_circuit(expr: ASTNode) -> CompiledCircuit:
+    """Compile a expression into its forward reversible circuit"""
     validate_expression(expr)
 
-    expr = cast(Bit, optimize_expr(expr))
+    expr = optimize_expr(expr)
 
     # all ASTNodes in the expression in topological order
     order = parse_input(expr)
@@ -141,22 +144,44 @@ def compile_oracle(expr: Bit) -> Oracle:
             for b, q in zip(out_bits, built):
                 qubits[id(b)] = [q]
 
-    # Calculate the predicate, mark its phase, then undo all scratch work.
-    predicate = qubits[id(expr)][0]
-    oracle_circuit = circuit.copy()
-    oracle_circuit.z(predicate.qubit)
-    oracle_circuit.compose(circuit.inverse(), inplace=True)
+    # convert compiler-facing Q objects into the stable public layout
+    output_qubits = qubits[id(expr)]
 
     def index(q: Q) -> int:
         return circuit.find_bit(q.qubit).index
 
+    return CompiledCircuit(
+        circuit=circuit,
+        inputs={name: tuple(index(q) for q in bit_qs) for name, bit_qs in inputs.items()},
+        outputs=tuple(index(q) for q in output_qubits),
+        clean_ancillas=tuple(index(q) for q in qctx.pool.ancillas),
+        dirty_ancillas=(),
+        operation_spans=tuple(operation_spans),
+    )
+
+
+def compile_oracle(expr: Bit) -> Oracle:
+    """Compile decomposed Boolean logic into a clean phase oracle."""
+    if not isinstance(expr, Bit):
+        raise TypeError(
+            "compile_oracle expects a Bit expression; decompose UInt expressions first"
+        )
+    compiled = compile_circuit(expr)
+    if len(compiled.outputs) != 1:
+        raise RuntimeError("phase oracle compilation requires exactly one predicate output")
+
+    # Calculate the predicate, mark its phase, then undo all scratch work.
+    oracle_circuit = compiled.circuit.copy()
+    oracle_circuit.z(compiled.outputs[0])
+    oracle_circuit.compose(compiled.circuit.inverse(), inplace=True)
+
     return Oracle(
         circuit=oracle_circuit,
-        inputs={name: [index(q) for q in bit_qs] for name, bit_qs in inputs.items()},
+        inputs={name: list(bit_qs) for name, bit_qs in compiled.inputs.items()},
         output=[],
-        clean_ancillas=[index(q) for q in qctx.pool.ancillas],
-        dirty_ancillas=[],
-        operation_spans=operation_spans,
+        clean_ancillas=list(compiled.clean_ancillas),
+        dirty_ancillas=list(compiled.dirty_ancillas),
+        operation_spans=list(compiled.operation_spans),
     )
 
 
@@ -188,7 +213,7 @@ def count_uses(order: list[ASTNode], root: ASTNode) -> dict[int, int]:
     return uses
 
 
-def validate_expression(expr: Bit) -> None:
+def validate_expression(expr: ASTNode) -> None:
     """Check that every reachable node is supported before allocating qubits."""
     # visiting catches circular dependencies; visited skips shared nodes that
     # have already passed every check. Neither set changes the expression.
