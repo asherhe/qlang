@@ -58,3 +58,38 @@ def test_uint_used_twice_is_not_one_use(x, y):
 def test_one_use_does_not_affect_qubit_equality():
     raw = Qubit()
     assert Q(raw, one_use=True) == Q(raw, one_use=False)
+
+
+def gadget_operand_flags(monkeypatch, expr):
+    """one_use flags of each gadget's operands, in build order"""
+    from qlang.compile import compile as compile_mod
+
+    calls = []
+    real_get_gadget = compile_mod.get_gadget
+
+    def spy(node):
+        gadget = real_get_gadget(node)
+
+        def wrapped(qctx, node, *operands):
+            calls.append([[q.one_use for q in qs] for qs in operands])
+            return gadget(qctx, node, *operands)
+
+        return wrapped
+
+    monkeypatch.setattr(compile_mod, "get_gadget", spy)
+    compile_mod.compile_oracle(expr)
+    return calls
+
+
+def test_operands_are_one_use_at_their_only_parent(monkeypatch, p, q):
+    assert gadget_operand_flags(monkeypatch, p ^ q) == [[[True], [True]]]
+
+
+def test_one_use_is_set_at_last_parent_not_at_startup(monkeypatch, p, q):
+    # p has two parents: `p & q` (first) and `shared | p` (last); shared has two parents too
+    shared = p & q
+    expr = shared ^ (shared | p)
+    and_flags, or_flags, xor_flags = gadget_operand_flags(monkeypatch, expr)
+    assert and_flags == [[False], [True]]
+    assert or_flags == [[False], [True]]
+    assert xor_flags == [[True], [True]]
