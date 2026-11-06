@@ -42,6 +42,9 @@ def compile_oracle(expr: Bit) -> Oracle:
     qubits: dict[int, list[Q]] = {}
     # var name -> qubits of the node
     inputs: dict[str, list[Q]] = {}
+    # symbolic gadget -> its contiguous forward gate interval. This is kept as
+    # optional visualization metadata; it is not used during oracle execution.
+    operation_spans: list[tuple[str, int, int]] = []
 
     def expr_bits(expr: ASTNode) -> tuple[Bit, ...]:
         return expr.bits if isinstance(expr, UInt) else (cast(Bit, expr),)
@@ -113,7 +116,11 @@ def compile_oracle(expr: Bit) -> Oracle:
             release(op)
 
         gadget = get_gadget(node)
+        gate_start = len(circuit.data)
         out = gadget(qctx, node, *operand_qs)
+        gate_end = len(circuit.data)
+        if gate_end > gate_start:
+            operation_spans.append((node_type(node).name, gate_start, gate_end))
 
         out_bits: tuple[Bit, ...]
         if isinstance(node, UInt):
@@ -149,6 +156,7 @@ def compile_oracle(expr: Bit) -> Oracle:
         output=[],
         clean_ancillas=[index(q) for q in qctx.pool.ancillas],
         dirty_ancillas=[],
+        operation_spans=operation_spans,
     )
 
 
