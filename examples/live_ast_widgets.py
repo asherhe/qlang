@@ -5,8 +5,6 @@ import html
 import time
 from collections import defaultdict
 
-import ipywidgets as widgets
-from IPython.display import display, HTML
 import qlang
 from qlang.expression import BitType, UIntType
 
@@ -308,6 +306,9 @@ def render_graph(root, full_expressions=False):
     return markup, len(nodes), len(edges), sum(v > 1 for v in incoming.values())
 
 def make_explorer():
+    # Static graph exports do not need a notebook or widget installation.
+    import ipywidgets as widgets
+
     expression = widgets.Text(value="(x + y == 7) & (x > y)", placeholder="Type an expression…",
                               continuous_update=True, layout=widgets.Layout(width="100%"))
     optimized = widgets.Checkbox(value=False, description="Show optimized graph", indent=False)
@@ -447,6 +448,8 @@ def make_explorer():
 
 def show_explorer():
     """Build a fresh view, plus a widget-independent initial graph preview."""
+    from IPython.display import display, HTML
+
     explorer = make_explorer()
     print("Live AST v2: editable variable table and routed edges. Controls appear below.")
     display(explorer)

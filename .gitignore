@@ -221,3 +221,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Generated oracle presentation assets
+examples/oracle_exports/
