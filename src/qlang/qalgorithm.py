@@ -2,7 +2,7 @@ from collections.abc import Iterable, Mapping
 from typing import cast
 
 from .compile import Oracle, compile_oracle, OutputMode, validate_expression
-from .expression import ASTNode, Bit, UInt, BitType, UIntType
+from .expression import ASTNode, Bit, UInt, BitType, UIntType, const_bit
 from .evaluate import evaluate
 from .optimize import optimize_expr
 
@@ -79,6 +79,49 @@ def _prepare_domains(
                 raise ValueError(f"value {value} does not fit {name!r}'s {width}-bit width")
         allowed[name] = set(vals)
     return allowed
+
+def _restrict_domains(
+    pred: Bit, 
+    allowed: dict[str, set[int]],
+) -> Bit: 
+    """
+    given a predicate and a prepared domain, generate an effective predicate where 
+    the prepared domain is taken into consideration
+    """
+    variables: dict[str, Bit | UInt] = {}
+    visited: set[int] = set()
+    pending: list[ASTNode] = [pred]
+
+    # traverse the AST to collect all variables
+    while pending: 
+        node = pending.pop()
+        if id(node) in visited: 
+            continue
+        visited.add(id(node))
+
+        if isinstance(node, Bit) and node.bit_type == BitType.VAR: 
+            variables[cast(str, node.name)] = node
+        elif isinstance(node, UInt) and node.uint_type == UIntType.VAR: 
+            variables[cast(str, node.name)] = node
+        pending.extend(node.children)
+
+    effective = pred
+    for name, variable in variables.items(): 
+        values = allowed[name]
+        width = variable.width if isinstance(variable, UInt) else 1
+        
+        # domain is already complete
+        if len(values) == (1 << width): 
+            continue
+        if isinstance(variable, Bit): 
+            inclusion = variable if 1 in values else ~variable
+        else: 
+            inclusion = const_bit(False)
+            # creates a new condition to be inserted into the expression
+            for value in values: 
+                inclusion = inclusion | (variable == value)
+        effective = effective & inclusion
+    return effective
 
 def _phase_oracle(
     oracle: Oracle 
@@ -254,7 +297,7 @@ def search(
     if any (not values for values in allowed.values()): 
         return None
     
-    # determinstic allowed value for every param, in the case that 
+    # deterministic allowed value for every param, in the case that 
     # the predicate is always true or always false (for inputs and return values)
     defaults = {
         name: min(values)
@@ -268,7 +311,11 @@ def search(
         if actual != expected: 
             raise RuntimeError("optimized predicate disagrees with original predicate")
         return defaults if expected else None
-    
+
+    # generate new predicate based on allowed domain, then reoptimize
+    effective = _restrict_domains(simplified, allowed)
+    effective = cast(Bit, optimize_expr(effective))
+
     # compile_oracle only accepts decomposed logic; evaluate below keeps using pred
     oracle = compile_oracle(simplified)
     # if compilation removes all remaining inputs
